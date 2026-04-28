@@ -1,0 +1,51 @@
+{
+  "name": "desktop-storing-app",
+  "version": "1.0.0",
+  "description": "Electron + React + SQLite starter",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "vite build && electron-builder",
+    "preview": "vite preview",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^29.1.4",
+    "electron-builder": "^24.13.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vite": "^5.1.6",
+    "wait-on": "^7.2.0",
+    "@electron/rebuild": "^3.6.0"
+  },
+  "build": {
+    "appId": "com.example.desktopstoringapp",
+    "productName": "DesktopStoringApp",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}
