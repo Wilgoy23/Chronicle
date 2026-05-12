@@ -10,13 +10,15 @@
     "postinstall": "electron-builder install-app-deps",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:renderer": "vite build"
+    "build:renderer": "vite build",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.3"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
     "electron": "^29.1.4",
@@ -42,6 +44,12 @@
     ],
     "win": {
       "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
     },
     "nsis": {
       "oneClick": false,
