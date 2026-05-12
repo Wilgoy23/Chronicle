@@ -1,5 +1,5 @@
 {
-  "name": "desktop-storing-app",
+  "name": "chronicle",
   "version": "1.0.0",
   "description": "Electron + React + SQLite starter",
   "main": "electron/main.js",
@@ -30,8 +30,8 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.example.desktopstoringapp",
-    "productName": "DesktopStoringApp",
+    "appId": "com.example.chronicle",
+    "productName": "chronicle",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -54,7 +54,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createchronicleShortcut": true
     },
     "directories": {
       "output": "release"

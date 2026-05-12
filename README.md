@@ -1,6 +1,6 @@
 # Chronicle
 
-A personal media collection tracker for books, anime, movies, and games — built as a Windows desktop app.
+A personal media collection tracker for books, anime, movies, and games — built as a Windows chronicle app.
 
 ## Features
 
@@ -12,7 +12,7 @@ A personal media collection tracker for books, anime, movies, and games — buil
 
 ## Tech Stack
 
-- **Electron** — desktop shell
+- **Electron** — chronicle shell
 - **React 18 + Vite** — frontend
 - **SQLite (better-sqlite3)** — local database
 
