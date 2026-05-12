@@ -54,8 +54,6 @@ jobs:
 
       - name: Build app
         run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifact
         if: runner.os == 'Windows'
