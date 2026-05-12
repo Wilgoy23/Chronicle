@@ -53,7 +53,7 @@ jobs:
         run: npx @electron/rebuild -f -o better-sqlite3
 
       - name: Build app
-        run: npm run build
+        run: npm run build:renderer && npx electron-builder --publish never
 
       - name: Upload Windows artifact
         if: runner.os == 'Windows'
