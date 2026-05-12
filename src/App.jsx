@@ -14,6 +14,15 @@ export const DEFAULT_CATEGORIES = [
   { id: 'game',  label: 'Games',  icon: '🎮', color: '#4ade80', enabled: true },
 ]
 
+const S = 16 // icon stroke size
+const ICONS = {
+  book:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+  anime:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>,
+  movie:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>,
+  game:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15.5" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>,
+  settings: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="14" cy="20" r="2"/></svg>,
+}
+
 export const STATUS_LABELS = {
   completed:   'Completed',
   in_progress: 'In Progress',
@@ -119,10 +128,10 @@ export default function App() {
   }
 
   return (
-    <div className="layout">
+    <div className="layout" style={{ '--accent': activeCat?.color }}>
       {/* Sidebar */}
       <aside className="sidebar">
-        <div className="sidebar-logo">ARCHIVE</div>
+        <div className="sidebar-logo">Chronicle</div>
 
         <nav className="sidebar-nav">
           {page === 'collection' && visibleCats.map(cat => (
@@ -132,7 +141,7 @@ export default function App() {
               style={{ '--accent': cat.color }}
               onClick={() => setCategory(cat.id)}
             >
-              <span className="nav-icon">{cat.icon}</span>
+              <span className="nav-icon">{ICONS[cat.id]}</span>
               <span>{cat.label}</span>
             </button>
           ))}
@@ -144,7 +153,7 @@ export default function App() {
             style={{ '--accent': '#94a3b8' }}
             onClick={() => page === 'settings' ? handleSettingsReturn() : setPage('settings')}
           >
-            <span className="nav-icon">⚙</span>
+            <span className="nav-icon">{ICONS.settings}</span>
             <span>Settings</span>
           </button>
         </div>
@@ -155,7 +164,7 @@ export default function App() {
         <main className="main">
           <header className="topbar" style={{ '--accent': '#94a3b8' }}>
             <div className="topbar-title">
-              <span className="topbar-icon">⚙</span>
+              <span className="topbar-icon">{ICONS.settings}</span>
               <h1>Settings</h1>
             </div>
             <button className="add-btn" style={{ '--accent': '#94a3b8' }} onClick={handleSettingsReturn}>
@@ -168,7 +177,7 @@ export default function App() {
         <main className="main">
           <header className="topbar" style={{ '--accent': activeCat?.color }}>
             <div className="topbar-title">
-              <span className="topbar-icon">{activeCat?.icon}</span>
+              <span className="topbar-icon">{ICONS[activeCat?.id]}</span>
               <h1>{activeCat?.label}</h1>
               <span className="topbar-count">{entries.length}</span>
             </div>
