@@ -27,7 +27,7 @@ npm run dev
 
 ## Build
 
-Produces a Windows installer (`.exe`) in the `release/` folder:
+Produces a Windows installer (`.exe`) in the `release/` folder:...
 
 ```bash
 npm run build
