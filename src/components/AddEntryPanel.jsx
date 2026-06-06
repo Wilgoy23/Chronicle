@@ -5,13 +5,13 @@ import SeriesSelect from './SeriesSelect'
 const today = () => new Date().toISOString().slice(0, 10)
 const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series: '', date_read: today() }
 
-export default function AddEntryPanel({ open, category, color, seriesList = [], onClose, onAdded }) {
+export default function AddEntryPanel({ open, category, color, seriesList = [], defaultSeries = '', onClose, onAdded }) {
   const [form, setForm] = useState(DEFAULT)
   const titleRef = useRef(null)
 
   useEffect(() => {
     if (open) {
-      setForm(DEFAULT)
+      setForm({ ...DEFAULT, series: defaultSeries })
       setTimeout(() => titleRef.current?.focus(), 50)
     }
   }, [open, category])

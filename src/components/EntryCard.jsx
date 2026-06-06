@@ -6,9 +6,13 @@ const STATUS_COLORS = {
   planned:     '#94a3b8',
 }
 
-export default function EntryCard({ entry, color, onDelete, onEdit }) {
-  const displayDate = entry.date_read || entry.created_at?.slice(0, 10) || ''
+const STATUS_SHORT = {
+  completed:   'Done',
+  in_progress: 'Reading',
+  planned:     'Planned',
+}
 
+export default function EntryCard({ entry, color, onDelete, onEdit }) {
   function handleDragStart(e) {
     e.dataTransfer.setData('text/plain', String(entry.id))
     e.dataTransfer.effectAllowed = 'move'
@@ -22,42 +26,65 @@ export default function EntryCard({ entry, color, onDelete, onEdit }) {
       onDragStart={handleDragStart}
       onClick={() => onEdit?.(entry)}
     >
-      <div className="card-accent-bar" />
-
-      {entry.cover_url && (
-        <img
-          className="card-cover"
-          src={entry.cover_url}
-          alt={entry.title}
-          loading="lazy"
-        />
-      )}
-
-      <div className="card-body">
-        <div className="card-top">
-          <h3 className="card-title">{entry.title}</h3>
-          <button
-            className="card-delete"
-            onClick={e => { e.stopPropagation(); onDelete(entry.id) }}
-            title="Remove"
-          >✕</button>
-        </div>
-
-        <div className="card-meta">
-          <span className="status-badge" style={{ color: STATUS_COLORS[entry.status] }}>
-            ● {STATUS_LABELS[entry.status] ?? entry.status}
-          </span>
-          {entry.rating && (
-            <span className="rating-badge" style={{ '--accent': color }}>
-              {entry.rating}<span className="rating-max">/10</span>
+      {entry.cover_url ? (
+        <div className="card-cover-wrap">
+          <img
+            className="card-cover"
+            src={entry.cover_url}
+            alt={entry.title}
+            loading="lazy"
+          />
+          {/* Status chip */}
+          <div className="cover-status">
+            <span className="cover-status-dot" style={{ background: STATUS_COLORS[entry.status] }} />
+            <span className="cover-status-label" style={{ color: STATUS_COLORS[entry.status] }}>
+              {STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]}
             </span>
+          </div>
+          {/* Rating badge */}
+          {entry.rating && (
+            <div className="cover-rating">
+              {entry.rating}<span className="cover-rating-max">/10</span>
+            </div>
           )}
         </div>
+      ) : (
+        <div className="card-placeholder">
+          {entry.category === 'book' ? '📖' : entry.category === 'anime' ? '⛩' : entry.category === 'movie' ? '🎬' : '🎮'}
+        </div>
+      )}
 
-        {entry.series && <p className="card-series">{entry.series}</p>}
+      {/* Delete overlay */}
+      <div className="card-actions">
+        <button
+          className="card-action-btn"
+          onClick={e => { e.stopPropagation(); onDelete(entry.id) }}
+          title="Remove"
+        >✕</button>
+      </div>
+
+      <div className="card-body">
+        <h3 className="card-title">{entry.title}</h3>
+
+        {/* Show status/rating below title for no-cover cards */}
+        {!entry.cover_url && (
+          <div className="card-meta">
+            <span className="status-badge" style={{ color: STATUS_COLORS[entry.status] }}>
+              {STATUS_LABELS[entry.status] ?? entry.status}
+            </span>
+            {entry.rating && (
+              <span className="rating-badge" style={{ '--accent': color }}>
+                {entry.rating}<span className="rating-max">/10</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {entry.series && (
+          <span className="card-series-tag">{entry.series}</span>
+        )}
+
         {entry.notes && <p className="card-notes">{entry.notes}</p>}
-
-        {displayDate && <time className="card-date">{displayDate}</time>}
       </div>
     </div>
   )
