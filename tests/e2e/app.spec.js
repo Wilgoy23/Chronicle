@@ -36,24 +36,39 @@ test('sidebar shows all 4 categories', async () => {
   await expect(page.locator('.nav-item', { hasText: 'Games' })).toBeVisible()
 })
 
-test('add an entry manually and see it in the grid', async () => {
-  await page.click('button.add-btn:not(.add-btn--search)')
+// Helper: open Add Entry → click "Add manually" → fill form → save
+async function addEntryManually(title) {
+  await page.click('button.add-btn')
+  await page.waitForSelector('.search-modal', { state: 'visible' })
+  await page.click('button.search-manual-btn')
   await page.waitForSelector('aside.add-panel.open')
-  await page.fill('input[placeholder="e.g. Berserk"]', 'My Test Entry')
-  await page.click('button.submit-btn')
+  await page.fill('aside.add-panel input[placeholder="e.g. Berserk"]', title)
+  await page.click('aside.add-panel button.submit-btn')
+}
+
+test('add an entry manually and see it in the grid', async () => {
+  await addEntryManually('My Test Entry')
   await expect(page.locator('.card-title', { hasText: 'My Test Entry' })).toBeVisible()
 })
 
 test('delete an entry and confirm it is gone', async () => {
-  await page.click('button.add-btn:not(.add-btn--search)')
-  await page.waitForSelector('aside.add-panel.open')
-  await page.fill('input[placeholder="e.g. Berserk"]', 'Entry To Delete')
-  await page.click('button.submit-btn')
+  await addEntryManually('Entry To Delete')
   await expect(page.locator('.card-title', { hasText: 'Entry To Delete' })).toBeVisible()
 
   const card = page.locator('.card', { hasText: 'Entry To Delete' })
-  await card.locator('button.card-delete').click()
+  await card.locator('button.card-action-btn').click()
   await expect(page.locator('.card-title', { hasText: 'Entry To Delete' })).not.toBeVisible()
+})
+
+test('duplicate entry shows alert and does not create a second card', async () => {
+  await addEntryManually('Unique Title')
+  await expect(page.locator('.card-title', { hasText: 'Unique Title' })).toBeVisible()
+
+  // Attempt to add the same title again — expect the browser alert
+  page.once('dialog', dialog => dialog.dismiss())
+  await addEntryManually('Unique Title')
+  // Only one card should exist
+  expect(await page.locator('.card-title', { hasText: 'Unique Title' }).count()).toBe(1)
 })
 
 test('settings page opens and Back returns to collection', async () => {

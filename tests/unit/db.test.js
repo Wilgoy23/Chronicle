@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { initDb, addEntry, getEntries, updateEntry, deleteEntry, getSeries } from '../../electron/db.js'
+import {
+  initDb, addEntry, getEntries, updateEntry, deleteEntry,
+  getSeries, addSeries, deleteSeries, renameSeries,
+} from '../../electron/db.js'
 
 describe('initDb', () => {
   it('does not throw when called twice on the same path', () => {
-    const os = require('os')
+    const os   = require('os')
     const path = require('path')
-    const fs = require('fs')
-    const tmp = path.join(os.tmpdir(), `chronicle-migration-${Date.now()}.db`)
+    const fs   = require('fs')
+    const tmp  = path.join(os.tmpdir(), `chronicle-migration-${Date.now()}.db`)
     try {
       expect(() => { initDb(tmp); initDb(tmp) }).not.toThrow()
     } finally {
@@ -35,15 +38,43 @@ describe('addEntry', () => {
     const entry = addEntry({ category: 'book', title: 'Dune', status: 'completed' })
     expect(entry.rating).toBeNull()
   })
+
+  it('stores series_id and exposes series name via JOIN', () => {
+    const s = addSeries('book', 'Dune')
+    const entry = addEntry({ category: 'book', title: 'Dune Messiah', status: 'completed', series_id: s.id })
+    expect(entry.series_id).toBe(s.id)
+    expect(entry.series).toBe('Dune')
+  })
+
+  it('returns { error: DUPLICATE } when the same title is added twice in one category', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    const dup = addEntry({ category: 'book', title: 'Dune', status: 'planned' })
+    expect(dup.error).toBe('DUPLICATE')
+    expect(dup.existing.title).toBe('Dune')
+  })
+
+  it('allows the same title in different categories', () => {
+    const book  = addEntry({ category: 'book',  title: 'Dune', status: 'completed' })
+    const movie = addEntry({ category: 'movie', title: 'Dune', status: 'planned' })
+    expect(book.id).toBeTypeOf('number')
+    expect(movie.id).toBeTypeOf('number')
+    expect(book.id).not.toBe(movie.id)
+  })
+
+  it('duplicate check is case-insensitive', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    const dup = addEntry({ category: 'book', title: 'dune', status: 'planned' })
+    expect(dup.error).toBe('DUPLICATE')
+  })
 })
 
 describe('getEntries', () => {
   beforeEach(() => initDb(':memory:'))
 
   it('returns entries for the given category, newest first', () => {
-    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
-    addEntry({ category: 'book', title: 'Foundation', status: 'planned' })
-    addEntry({ category: 'anime', title: 'Naruto', status: 'completed' })
+    addEntry({ category: 'book',  title: 'Dune',       status: 'completed' })
+    addEntry({ category: 'book',  title: 'Foundation', status: 'planned' })
+    addEntry({ category: 'anime', title: 'Naruto',     status: 'completed' })
 
     const books = getEntries('book')
     expect(books).toHaveLength(2)
@@ -52,7 +83,7 @@ describe('getEntries', () => {
   })
 
   it('returns all entries when called with no category', () => {
-    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    addEntry({ category: 'book',  title: 'Dune',   status: 'completed' })
     addEntry({ category: 'anime', title: 'Naruto', status: 'completed' })
     expect(getEntries()).toHaveLength(2)
   })
@@ -60,28 +91,46 @@ describe('getEntries', () => {
   it('returns empty array for a category with no entries', () => {
     expect(getEntries('game')).toEqual([])
   })
+
+  it('includes series name from JOIN when series_id is set', () => {
+    const s = addSeries('book', 'Dune')
+    addEntry({ category: 'book', title: 'Dune Messiah', status: 'completed', series_id: s.id })
+    const [entry] = getEntries('book')
+    expect(entry.series).toBe('Dune')
+    expect(entry.series_id).toBe(s.id)
+  })
 })
 
 describe('updateEntry', () => {
   beforeEach(() => initDb(':memory:'))
 
   it('updates all editable fields and returns the updated row', () => {
+    const s     = addSeries('book', 'Dune')
     const entry = addEntry({ category: 'book', title: 'Dune', status: 'planned' })
     const updated = updateEntry({
-      id: entry.id,
-      title: 'Dune Messiah',
-      status: 'completed',
-      rating: 9,
-      notes: 'Great sequel',
-      series: 'Dune',
+      id:        entry.id,
+      title:     'Dune Messiah',
+      status:    'completed',
+      rating:    9,
+      notes:     'Great sequel',
+      series_id: s.id,
       date_read: '2024-01-01',
     })
     expect(updated.title).toBe('Dune Messiah')
     expect(updated.status).toBe('completed')
     expect(updated.rating).toBe(9)
     expect(updated.notes).toBe('Great sequel')
+    expect(updated.series_id).toBe(s.id)
     expect(updated.series).toBe('Dune')
     expect(updated.date_read).toBe('2024-01-01')
+  })
+
+  it('sets series_id to null when passed null', () => {
+    const s     = addSeries('book', 'Dune')
+    const entry = addEntry({ category: 'book', title: 'Dune', status: 'completed', series_id: s.id })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, series_id: null })
+    expect(updated.series_id).toBeNull()
+    expect(updated.series).toBeNull()
   })
 })
 
@@ -103,17 +152,94 @@ describe('deleteEntry', () => {
 describe('getSeries', () => {
   beforeEach(() => initDb(':memory:'))
 
-  it('returns distinct series for the category, sorted alphabetically', () => {
-    addEntry({ category: 'book', title: 'Dune 1', status: 'completed', series: 'Dune' })
-    addEntry({ category: 'book', title: 'Foundation 1', status: 'completed', series: 'Foundation' })
-    addEntry({ category: 'book', title: 'Dune 2', status: 'completed', series: 'Dune' })
-    addEntry({ category: 'anime', title: 'Naruto 1', status: 'completed', series: 'Naruto' })
-
-    expect(getSeries('book')).toEqual(['Dune', 'Foundation'])
+  it('returns series as {id, name} objects sorted alphabetically', () => {
+    const f = addSeries('book', 'Foundation')
+    const d = addSeries('book', 'Dune')
+    const list = getSeries('book')
+    expect(list).toEqual([
+      { id: d.id, name: 'Dune' },
+      { id: f.id, name: 'Foundation' },
+    ])
   })
 
-  it('excludes entries with no series', () => {
-    addEntry({ category: 'book', title: 'Solo', status: 'completed' })
+  it('returns empty array when no series exist for the category', () => {
+    addSeries('anime', 'Naruto')
     expect(getSeries('book')).toHaveLength(0)
+  })
+
+  it('includes series with no entries attached', () => {
+    addSeries('book', 'EmptySeries')
+    expect(getSeries('book')).toHaveLength(1)
+  })
+})
+
+describe('addSeries', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('creates a series and returns it with an id', () => {
+    const s = addSeries('book', 'Dune')
+    expect(s.id).toBeTypeOf('number')
+    expect(s.name).toBe('Dune')
+    expect(s.category).toBe('book')
+  })
+
+  it('trims whitespace from the name', () => {
+    const s = addSeries('book', '  Dune  ')
+    expect(s.name).toBe('Dune')
+  })
+
+  it('returns the existing record instead of throwing on duplicate name', () => {
+    const first  = addSeries('book', 'Dune')
+    const second = addSeries('book', 'Dune')
+    expect(second.id).toBe(first.id)
+  })
+
+  it('allows the same name in different categories', () => {
+    const a = addSeries('book',  'Dune')
+    const b = addSeries('movie', 'Dune')
+    expect(a.id).not.toBe(b.id)
+  })
+})
+
+describe('deleteSeries', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('removes the series record', () => {
+    const s = addSeries('book', 'Dune')
+    deleteSeries(s.id)
+    expect(getSeries('book')).toHaveLength(0)
+  })
+
+  it('nullifies series_id on attached entries', () => {
+    const s     = addSeries('book', 'Dune')
+    const entry = addEntry({ category: 'book', title: 'Dune 1', status: 'completed', series_id: s.id })
+    deleteSeries(s.id)
+    const [updated] = getEntries('book')
+    expect(updated.series_id).toBeNull()
+    expect(updated.series).toBeNull()
+  })
+
+  it('returns { success: true }', () => {
+    const s = addSeries('book', 'Dune')
+    expect(deleteSeries(s.id)).toEqual({ success: true })
+  })
+})
+
+describe('renameSeries', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('updates the series name and returns the updated record', () => {
+    const s       = addSeries('book', 'Old Name')
+    const updated = renameSeries(s.id, 'New Name')
+    expect(updated.name).toBe('New Name')
+    expect(updated.id).toBe(s.id)
+  })
+
+  it('entries reflect the new name via JOIN after rename', () => {
+    const s = addSeries('book', 'Old Name')
+    addEntry({ category: 'book', title: 'Book 1', status: 'completed', series_id: s.id })
+    renameSeries(s.id, 'New Name')
+    const [entry] = getEntries('book')
+    expect(entry.series).toBe('New Name')
   })
 })
