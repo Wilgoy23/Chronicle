@@ -45,9 +45,9 @@ async function addEntryManually(title) {
   // Wait for footer to be rendered before clicking
   await page.waitForSelector('button.search-manual-btn', { state: 'visible' })
   await page.locator('button.search-manual-btn').click()
-  await page.waitForSelector('aside.add-panel.open')
-  await page.fill('aside.add-panel input[placeholder="e.g. Berserk"]', title)
-  await page.click('aside.add-panel button.submit-btn')
+  await page.waitForSelector('.add-modal', { state: 'visible' })
+  await page.fill('.add-modal input[placeholder="e.g. Berserk"]', title)
+  await page.click('.add-modal button.submit-btn')
 }
 
 test('add an entry manually and see it in the grid', async () => {
@@ -68,11 +68,14 @@ test('duplicate entry shows alert and does not create a second card', async () =
   await addEntryManually('Unique Title')
   await expect(page.locator('.card-title', { hasText: 'Unique Title' })).toBeVisible()
 
-  // Attempt to add the same title again via manual panel — expect the browser alert
-  page.once('dialog', dialog => dialog.dismiss())
+  // Attempt to add the same title again — expect inline duplicate error, no new card
   await addEntryManually('Unique Title')
+  await expect(page.locator('.add-dup-error')).toBeVisible()
   // Only one card should exist
   expect(await page.locator('.card-title', { hasText: 'Unique Title' }).count()).toBe(1)
+  // Close the modal so subsequent tests start from a clean state
+  await page.locator('.add-modal .panel-close').click()
+  await page.waitForSelector('.add-modal', { state: 'hidden' })
 })
 
 test('settings page opens and Back returns to collection', async () => {

@@ -6,17 +6,18 @@ const today = () => new Date().toISOString().slice(0, 10)
 const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series_id: null, date_read: today() }
 
 export default function AddEntryPanel({ open, category, color, seriesList = [], defaultSeriesId = null, onClose, onAdded }) {
-  const [form, setForm] = useState(DEFAULT)
+  const [form, setForm]   = useState(DEFAULT)
+  const [dupError, setDupError] = useState(false)
   const titleRef = useRef(null)
 
   useEffect(() => {
     if (open) {
       setForm({ ...DEFAULT, series_id: defaultSeriesId })
+      setDupError(false)
       setTimeout(() => titleRef.current?.focus(), 50)
     }
   }, [open, category])
 
-  // Sync defaultSeriesId if it arrives after open
   useEffect(() => {
     if (open) setForm(prev => ({ ...prev, series_id: defaultSeriesId }))
   }, [defaultSeriesId])
@@ -39,18 +40,19 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
       date_read: form.date_read || null,
     })
     if (result?.error === 'DUPLICATE') {
-      alert(`"${form.title.trim()}" is already in your library.`)
+      setDupError(true)
       return
     }
+    setDupError(false)
     onAdded(result)
     setForm(DEFAULT)
   }
 
-  return (
-    <>
-      <div className={`panel-backdrop ${open ? 'visible' : ''}`} onClick={onClose} />
+  if (!open) return null
 
-      <aside className={`add-panel ${open ? 'open' : ''}`} style={{ '--accent': color }}>
+  return (
+    <div className="add-modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="add-modal" style={{ '--accent': color }}>
         <div className="panel-header">
           <h2>Add Manually</h2>
           <button className="panel-close" onClick={onClose}>✕</button>
@@ -63,10 +65,13 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
               ref={titleRef}
               placeholder="e.g. Berserk"
               value={form.title}
-              onChange={e => set('title', e.target.value)}
+              onChange={e => { set('title', e.target.value); setDupError(false) }}
               required
             />
           </label>
+          {dupError && (
+            <p className="add-dup-error">"{form.title.trim()}" is already in your library.</p>
+          )}
 
           <label>
             Series <span className="subtle">(optional)</span>
@@ -128,7 +133,7 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
 
           <button type="submit" className="submit-btn">Save Entry</button>
         </form>
-      </aside>
-    </>
+      </div>
+    </div>
   )
 }

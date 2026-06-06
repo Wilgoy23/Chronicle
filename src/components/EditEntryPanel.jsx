@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { STATUS_LABELS } from '../App'
+import { DEFAULT_CATEGORIES, STATUS_LABELS } from '../App'
 import SeriesSelect from './SeriesSelect'
 
 export default function EditEntryPanel({ entry, color, seriesList = [], onClose, onUpdate, onDelete }) {
@@ -52,39 +52,40 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
     onClose()
   }
 
-  const heroStyle = form.cover_url
-    ? { backgroundImage: `linear-gradient(to bottom, rgba(8,8,15,0) 0%, var(--bg2) 100%), url(${form.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center top' }
-    : { background: `linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--bg3)), var(--bg3))` }
+  const catLabel   = DEFAULT_CATEGORIES.find(c => c.id === entry.category)?.label ?? entry.category
+  const seriesName = form.series_id ? seriesList.find(s => s.id === form.series_id)?.name : null
+  const heroMeta   = [seriesName, catLabel].filter(Boolean).join(' · ')
+
+  const heroStyle = {
+    background: `linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, #0d0d1c) 0%, color-mix(in srgb, var(--accent) 8%, #111122) 100%)`,
+  }
 
   return (
-    <div className="edit-modal-backdrop" onClick={onClose}>
-      <aside className="edit-modal" style={{ '--accent': color }} onClick={e => e.stopPropagation()}>
+    <div className="edit-modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <aside className="edit-modal" style={{ '--accent': color }}>
         {/* Header */}
         <div className="panel-header">
           <h2>Edit Entry</h2>
-          <div className="panel-header-actions">
-            <button type="button" className="edit-delete-btn" onClick={handleDelete} title="Delete entry">
-              Delete
-            </button>
-            <button className="panel-close" onClick={onClose}>✕</button>
-          </div>
+          <button className="panel-close" onClick={onClose}>✕</button>
         </div>
 
         <form className="edit-form" onSubmit={handleSubmit}>
-          {/* Hero banner */}
+          {/* Hero banner — cover pokes up from bottom, title + meta alongside */}
           <div className="edit-hero" style={heroStyle}>
-            {form.cover_url && (
+            {form.cover_url ? (
               <img src={form.cover_url} alt={form.title} className="edit-hero-cover" />
-            )}
-            {!form.cover_url && (
+            ) : (
               <div className="edit-hero-cover edit-hero-cover--empty" />
             )}
+            <div className="edit-hero-info">
+              <div className="edit-hero-title">{form.title || entry.title}</div>
+              <div className="edit-hero-meta">{heroMeta}</div>
+            </div>
           </div>
 
           {/* Scrollable fields */}
           <div className="edit-fields">
 
-            {/* Details section */}
             <div className="edit-section-label">Details</div>
 
             <label className="edit-label">
@@ -148,7 +149,6 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
               </div>
             </div>
 
-            {/* Extra section */}
             <div className="edit-section-label edit-section-label--extra">Extra</div>
 
             <div className="edit-two-col">
@@ -186,14 +186,17 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
 
           </div>
 
-          {/* Sticky footer */}
+          {/* Sticky footer — Save + Delete */}
           <div className="edit-footer">
             <button type="submit" className="submit-btn" disabled={saving}>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
+            <button type="button" className="edit-delete-btn" onClick={handleDelete}>
+              Delete
+            </button>
           </div>
         </form>
-        </aside>
+      </aside>
     </div>
   )
 }
