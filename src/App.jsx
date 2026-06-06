@@ -14,7 +14,7 @@ export const DEFAULT_CATEGORIES = [
   { id: 'game',  label: 'Games',  icon: '🎮', color: '#4ade80', enabled: true },
 ]
 
-const S = 15 // icon stroke size
+const S = 15
 const ICONS = {
   book:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
   anime:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>,
@@ -23,9 +23,9 @@ const ICONS = {
   settings: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="14" cy="20" r="2"/></svg>,
   grid:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
   timeline: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
-  search:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
   plus:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   back:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
+  menu:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
 }
 
 export const STATUS_LABELS = {
@@ -34,45 +34,50 @@ export const STATUS_LABELS = {
   planned:     'Planned',
 }
 
-// Returns a flat list of { type: 'series', name, entries } and { type: 'solo', entry }
-// preserving the order of first appearance so newest items stay at the top.
-function groupEntries(entries) {
+// Series groups always appear before solo entries.
+// allSeries ensures empty (newly created) series still appear as drop targets.
+function groupEntries(entries, allSeries = []) {
   const seriesMap = new Map()
-  const result = []
-
+  const seriesItems = []
+  const soloItems = []
   for (const entry of entries) {
-    if (entry.series) {
-      if (!seriesMap.has(entry.series)) {
-        const item = { type: 'series', name: entry.series, entries: [] }
-        seriesMap.set(entry.series, item)
-        result.push(item)
+    if (entry.series_id) {
+      if (!seriesMap.has(entry.series_id)) {
+        const item = { type: 'series', id: entry.series_id, name: entry.series, entries: [] }
+        seriesMap.set(entry.series_id, item)
+        seriesItems.push(item)
       }
-      seriesMap.get(entry.series).entries.push(entry)
+      seriesMap.get(entry.series_id).entries.push(entry)
     } else {
-      result.push({ type: 'solo', entry })
+      soloItems.push({ type: 'solo', entry })
     }
   }
-  return result
+  for (const s of allSeries) {
+    if (!seriesMap.has(s.id)) {
+      seriesItems.unshift({ type: 'series', id: s.id, name: s.name, entries: [] })
+    }
+  }
+  return [...seriesItems, ...soloItems]
 }
 
 export default function App() {
-  const [page, setPage]           = useState('collection') // 'collection' | 'settings'
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
-  const [category, setCategory]   = useState(DEFAULT_CATEGORIES[0].id)
-  const [entries, setEntries]     = useState([])
-  const [seriesList, setSeriesList] = useState([])
-  const [panelOpen, setPanelOpen]   = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [page, setPage]               = useState('collection')
+  const [categories, setCategories]   = useState(DEFAULT_CATEGORIES)
+  const [category, setCategory]       = useState(DEFAULT_CATEGORIES[0].id)
+  const [entries, setEntries]         = useState([])
+  const [seriesList, setSeriesList]   = useState([])
+  const [searchOpen, setSearchOpen]   = useState(false)
+  const [manualOpen, setManualOpen]   = useState(false)
   const [editingEntry, setEditingEntry] = useState(null)
-  const [view, setView]             = useState('grid') // 'grid' | 'timeline'
+  const [view, setView]               = useState('grid')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [seriesFilter, setSeriesFilter] = useState(null)
-  const [sidebarView, setSidebarView] = useState('categories') // 'categories' | 'series'
-  const [pendingSeries, setPendingSeries] = useState('')
-  const [newSeriesName, setNewSeriesName] = useState('')
+  const [seriesFilter, setSeriesFilter] = useState(null) // series_id | null
+  const [sidebarView, setSidebarView] = useState('categories')
+  const [pendingSeriesId, setPendingSeriesId] = useState(null)
+  const [newSeriesName, setNewSeriesName]     = useState('')
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
+  const [sidebarOpen, setSidebarOpen]         = useState(false)
 
-  // Load saved category config from settings
   useEffect(() => {
     window.settings.get().then(s => {
       if (s.categories) setCategories(s.categories)
@@ -81,10 +86,10 @@ export default function App() {
 
   const filteredEntries = entries
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
-    .filter(e => !seriesFilter || e.series === seriesFilter)
+    .filter(e => seriesFilter == null || e.series_id === seriesFilter)
 
-  const visibleCats   = categories.filter(c => c.enabled)
-  const activeCat     = visibleCats.find(c => c.id === category) ?? visibleCats[0]
+  const visibleCats     = categories.filter(c => c.enabled)
+  const activeCat       = visibleCats.find(c => c.id === category) ?? visibleCats[0]
   const showSeriesPanel = page === 'collection' && sidebarView === 'series'
 
   useEffect(() => {
@@ -97,15 +102,19 @@ export default function App() {
     }
   }, [activeCat?.id])
 
+  function refreshSeriesList() {
+    window.db.getSeries(activeCat.id).then(setSeriesList)
+  }
+
   function handleAdded(entry) {
     setEntries(prev => [entry, ...prev])
-    window.db.getSeries(activeCat.id).then(setSeriesList)
-    setPanelOpen(false)
+    refreshSeriesList()
+    setManualOpen(false)
   }
 
   function handleSearchAdd(entry) {
     setEntries(prev => [entry, ...prev])
-    window.db.getSeries(activeCat.id).then(setSeriesList)
+    refreshSeriesList()
   }
 
   async function handleDelete(id) {
@@ -115,39 +124,42 @@ export default function App() {
 
   function handleUpdate(updated) {
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
-    // Refresh series list — series may have been added or changed
-    window.db.getSeries(activeCat.id).then(setSeriesList)
+    refreshSeriesList()
   }
 
-  function handleEdit(entry) {
-    setEditingEntry(entry)
-  }
+  function handleEdit(entry) { setEditingEntry(entry) }
 
-  async function handleDropEntry(entryId, seriesName) {
+  async function handleDropEntry(entryId, targetSeriesId) {
     const entry = entries.find(e => e.id === entryId)
-    if (!entry || entry.series === seriesName) return
+    if (!entry || entry.series_id === targetSeriesId) return
     const updated = await window.db.updateEntry({
       id:        entry.id,
       title:     entry.title,
       status:    entry.status,
       rating:    entry.rating,
       notes:     entry.notes,
-      series:    seriesName,
+      series_id: targetSeriesId,
       date_read: entry.date_read,
     })
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
   }
 
-  function handleNewSeries(name) {
+  async function handleNewSeries(name) {
     const trimmed = name.trim()
     if (!trimmed) return
-    setPendingSeries(trimmed)
-    setPanelOpen(true)
+    const created = await window.db.addSeries(activeCat.id, trimmed)
+    refreshSeriesList()
+    setPendingSeriesId(created.id)
+    setSearchOpen(true)
     setShowNewSeriesInput(false)
     setNewSeriesName('')
   }
 
-  // Reload categories after settings change
+  function openAdd() {
+    setPendingSeriesId(null)
+    setSearchOpen(true)
+  }
+
   function handleSettingsReturn() {
     setPage('collection')
     setSidebarView('categories')
@@ -158,8 +170,13 @@ export default function App() {
 
   return (
     <div className="layout" style={{ '--accent': activeCat?.color }}>
+      {/* Mobile sidebar backdrop */}
+      {sidebarOpen && (
+        <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar-logo">Chronicle</div>
 
         <div className="sidebar-panels">
@@ -171,7 +188,7 @@ export default function App() {
                   key={cat.id}
                   className={`nav-item ${category === cat.id ? 'active' : ''}`}
                   style={{ '--accent': cat.color }}
-                  onClick={() => { setCategory(cat.id); setSidebarView('series') }}
+                  onClick={() => { setCategory(cat.id); setSidebarView('series'); setSidebarOpen(false) }}
                 >
                   <span className="nav-icon">{ICONS[cat.id]}</span>
                   <span>{cat.label}</span>
@@ -216,7 +233,7 @@ export default function App() {
                 </button>
               )}
               <button
-                className={`nav-item ${!seriesFilter ? 'active' : ''}`}
+                className={`nav-item ${seriesFilter == null ? 'active' : ''}`}
                 style={{ '--accent': activeCat?.color }}
                 onClick={() => setSeriesFilter(null)}
               >
@@ -226,14 +243,14 @@ export default function App() {
               </button>
               {seriesList.map(s => (
                 <button
-                  key={s}
-                  className={`nav-item ${seriesFilter === s ? 'active' : ''}`}
+                  key={s.id}
+                  className={`nav-item ${seriesFilter === s.id ? 'active' : ''}`}
                   style={{ '--accent': activeCat?.color }}
-                  onClick={() => setSeriesFilter(prev => prev === s ? null : s)}
+                  onClick={() => setSeriesFilter(prev => prev === s.id ? null : s.id)}
                 >
                   <span className="nav-icon series-nav-dot-icon">◆</span>
-                  <span>{s}</span>
-                  <span className="nav-count">{entries.filter(e => e.series === s).length}</span>
+                  <span>{s.name}</span>
+                  <span className="nav-count">{entries.filter(e => e.series_id === s.id).length}</span>
                 </button>
               ))}
             </nav>
@@ -244,7 +261,7 @@ export default function App() {
           <button
             className={`nav-item ${page === 'settings' ? 'active' : ''}`}
             style={{ '--accent': '#94a3b8' }}
-            onClick={() => page === 'settings' ? handleSettingsReturn() : setPage('settings')}
+            onClick={() => { page === 'settings' ? handleSettingsReturn() : setPage('settings'); setSidebarOpen(false) }}
           >
             <span className="nav-icon">{ICONS.settings}</span>
             <span>Settings</span>
@@ -257,6 +274,9 @@ export default function App() {
         <main className="main">
           <header className="topbar" style={{ '--accent': '#94a3b8' }}>
             <div className="topbar-title">
+              <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
+                {ICONS.menu}
+              </button>
               <span className="topbar-icon">{ICONS.settings}</span>
               <h1>Settings</h1>
             </div>
@@ -270,6 +290,9 @@ export default function App() {
         <main className="main">
           <header className="topbar" style={{ '--accent': activeCat?.color }}>
             <div className="topbar-title">
+              <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
+                {ICONS.menu}
+              </button>
               <span className="topbar-icon">{ICONS[activeCat?.id]}</span>
               <h1>{activeCat?.label}</h1>
               <span className="topbar-count">{entries.length}</span>
@@ -287,19 +310,10 @@ export default function App() {
                   title="Timeline view"
                 >{ICONS.timeline}</button>
               </div>
-              {(activeCat?.id === 'book' || activeCat?.id === 'anime') && (
-                <button
-                  className="add-btn add-btn--search"
-                  style={{ '--accent': activeCat?.color }}
-                  onClick={() => setSearchOpen(true)}
-                >
-                  {ICONS.search}&nbsp; Search
-                </button>
-              )}
               <button
                 className="add-btn"
                 style={{ '--accent': activeCat?.color }}
-                onClick={() => setPanelOpen(true)}
+                onClick={openAdd}
               >
                 {ICONS.plus}&nbsp; Add Entry
               </button>
@@ -337,7 +351,7 @@ export default function App() {
               {filteredEntries.length === 0 && (
                 <div className="empty-state">
                   <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                  <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={() => setPanelOpen(true)}>
+                  <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
                     Add your first
                   </button>
                 </div>
@@ -346,22 +360,22 @@ export default function App() {
           ) : null}
 
           <div className="entries-grid" style={{ display: view === 'grid' ? undefined : 'none' }}>
-            {filteredEntries.length === 0 && (
+            {filteredEntries.length === 0 && seriesList.length === 0 && (
               <div className="empty-state">
                 <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                <button
-                  className="add-btn"
-                  style={{ '--accent': activeCat?.color }}
-                  onClick={() => setPanelOpen(true)}
-                >
+                <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
                   Add your first
                 </button>
               </div>
             )}
-            {(seriesFilter ? filteredEntries.map(e => ({ type: 'solo', entry: e })) : groupEntries(filteredEntries)).map(item =>
+            {(seriesFilter != null
+              ? filteredEntries.map(e => ({ type: 'solo', entry: e }))
+              : groupEntries(filteredEntries, seriesList)
+            ).map(item =>
               item.type === 'series' ? (
                 <SeriesGroup
-                  key={`series:${item.name}`}
+                  key={`series:${item.id}`}
+                  seriesId={item.id}
                   name={item.name}
                   entries={item.entries}
                   color={activeCat?.color}
@@ -386,23 +400,25 @@ export default function App() {
             category={activeCat?.id}
             color={activeCat?.color}
             seriesList={seriesList}
+            existingEntries={entries}
+            defaultSeriesId={pendingSeriesId}
             onAdd={handleSearchAdd}
-            onClose={() => setSearchOpen(false)}
+            onAddManually={() => { setSearchOpen(false); setManualOpen(true) }}
+            onClose={() => { setSearchOpen(false); setPendingSeriesId(null) }}
           />
 
           <AddEntryPanel
-            open={panelOpen}
+            open={manualOpen}
             category={activeCat?.id}
             color={activeCat?.color}
             seriesList={seriesList}
-            defaultSeries={pendingSeries}
-            onClose={() => { setPanelOpen(false); setPendingSeries('') }}
+            defaultSeriesId={pendingSeriesId}
+            onClose={() => { setManualOpen(false); setPendingSeriesId(null) }}
             onAdded={handleAdded}
           />
 
           <EditEntryPanel
             entry={editingEntry}
-            category={activeCat?.id}
             color={activeCat?.color}
             seriesList={seriesList}
             onClose={() => setEditingEntry(null)}

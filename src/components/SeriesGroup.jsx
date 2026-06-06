@@ -2,7 +2,7 @@ import { useState } from 'react'
 import EntryCard from './EntryCard'
 import { STATUS_LABELS } from '../App'
 
-export default function SeriesGroup({ name, entries, color, onDelete, onUpdate, onEdit, onDropEntry }) {
+export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onDropEntry }) {
   const [expanded, setExpanded] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
@@ -24,7 +24,7 @@ export default function SeriesGroup({ name, entries, color, onDelete, onUpdate, 
     e.preventDefault()
     setDragOver(false)
     const entryId = parseInt(e.dataTransfer.getData('text/plain'), 10)
-    if (!isNaN(entryId)) onDropEntry?.(entryId, name)
+    if (!isNaN(entryId)) onDropEntry?.(entryId, seriesId)
   }
 
   const statusCounts = entries.reduce((acc, e) => {
@@ -62,7 +62,9 @@ export default function SeriesGroup({ name, entries, color, onDelete, onUpdate, 
             <span className="series-chevron">{expanded ? '▲' : '▼'}</span>
           </div>
           <div className="series-sub">
-            {entries.length} {entries.length === 1 ? 'entry' : 'entries'} · {summary}
+            {entries.length === 0
+              ? 'Empty · drag an entry here'
+              : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${summary}`}
           </div>
         </div>
       </button>

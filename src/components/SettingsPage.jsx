@@ -53,47 +53,64 @@ export default function SettingsPage() {
 }
 
 // ── API Keys ───────────────────────────────────────
-function ApiSection({ settings, onSave }) {
-  const [token, setToken] = useState(settings.hardcoverToken ?? '')
-  const [show, setShow]   = useState(false)
+function ApiKeyField({ label, hint, value, onSave, settingKey }) {
+  const [val, setVal] = useState(value ?? '')
+  const [show, setShow] = useState(false)
+  return (
+    <div className="setting-row">
+      <div className="setting-info">
+        <label>{label}</label>
+        <span className="setting-hint">{hint}</span>
+      </div>
+      <div className="token-input-wrap">
+        <input
+          type={show ? 'text' : 'password'}
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          placeholder="Paste key…"
+          className="setting-input"
+          spellCheck={false}
+        />
+        <button className="icon-btn" onClick={() => setShow(s => !s)} title="Toggle visibility">
+          {show ? '🙈' : '👁'}
+        </button>
+        <button className="save-field-btn" onClick={() => onSave({ [settingKey]: val.trim() })}>
+          Save
+        </button>
+      </div>
+      {value && <span className="setting-status ok">✓ Saved</span>}
+    </div>
+  )
+}
 
+function ApiSection({ settings, onSave }) {
   return (
     <section className="settings-section">
       <h2>API Keys</h2>
       <p className="settings-desc">
-        Keys are stored locally on your machine and never sent anywhere except the respective API.
+        Keys are stored locally and only sent to the respective API.
       </p>
-
-      <div className="setting-row">
-        <div className="setting-info">
-          <label>Hardcover Token</label>
-          <span className="setting-hint">
-            Get yours at <strong>hardcover.app → Settings → API</strong>
-          </span>
-        </div>
-        <div className="token-input-wrap">
-          <input
-            type={show ? 'text' : 'password'}
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            placeholder="Paste token…"
-            className="setting-input"
-            spellCheck={false}
-          />
-          <button className="icon-btn" onClick={() => setShow(s => !s)} title="Toggle visibility">
-            {show ? '🙈' : '👁'}
-          </button>
-          <button
-            className="save-field-btn"
-            onClick={() => onSave({ hardcoverToken: token.trim().replace(/^Bearer\s+/i, '') })}
-          >
-            Save
-          </button>
-        </div>
-        {settings.hardcoverToken && (
-          <span className="setting-status ok">✓ Token saved</span>
-        )}
-      </div>
+      <ApiKeyField
+        label="Hardcover Token"
+        hint="hardcover.app → Settings → API"
+        value={settings.hardcoverToken}
+        settingKey="hardcoverToken"
+        onSave={patch => onSave({ hardcoverToken: patch.hardcoverToken?.replace(/^Bearer\s+/i, '') })}
+      />
+      <ApiKeyField
+        label="TMDB API Key"
+        hint="themoviedb.org → Settings → API → API Key (v3 auth)"
+        value={settings.tmdbKey}
+        settingKey="tmdbKey"
+        onSave={onSave}
+      />
+      <ApiKeyField
+        label="RAWG API Key"
+        hint="rawg.io → API Key (free account required)"
+        value={settings.rawgKey}
+        settingKey="rawgKey"
+        onSave={onSave}
+      />
     </section>
   )
 }

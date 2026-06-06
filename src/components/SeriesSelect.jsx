@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 
-export default function SeriesSelect({ value, onChange, series, placeholder }) {
+// series = [{id, name}]
+// value  = series_id (integer) or null
+// onChange(id | null)
+export default function SeriesSelect({ value, onChange, series = [], category, placeholder }) {
+  const selectedName = series.find(s => s.id === value)?.name ?? ''
   const [open, setOpen]   = useState(false)
-  const [query, setQuery] = useState(value || '')
+  const [query, setQuery] = useState(selectedName)
   const ref               = useRef(null)
   const inputRef          = useRef(null)
 
-  // Sync query when value changes externally (e.g. panel reset)
-  useEffect(() => { setQuery(value || '') }, [value])
+  useEffect(() => {
+    setQuery(series.find(s => s.id === value)?.name ?? '')
+  }, [value, series])
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handler)
@@ -17,18 +21,18 @@ export default function SeriesSelect({ value, onChange, series, placeholder }) {
   }, [])
 
   const trimmed  = query.trim()
-  const filtered = series.filter(s => s.toLowerCase().includes(trimmed.toLowerCase()))
-  const isNew    = trimmed && !series.some(s => s.toLowerCase() === trimmed.toLowerCase())
+  const filtered = series.filter(s => s.name.toLowerCase().includes(trimmed.toLowerCase()))
+  const isNew    = trimmed && !series.some(s => s.name.toLowerCase() === trimmed.toLowerCase())
 
-  function select(val) {
-    onChange(val)
-    setQuery(val)
+  function select(s) {
+    onChange(s.id)
+    setQuery(s.name)
     setOpen(false)
   }
 
   function clear(e) {
     e.stopPropagation()
-    onChange('')
+    onChange(null)
     setQuery('')
     setOpen(false)
     inputRef.current?.focus()
@@ -36,13 +40,26 @@ export default function SeriesSelect({ value, onChange, series, placeholder }) {
 
   function handleInput(e) {
     setQuery(e.target.value)
-    onChange(e.target.value)
+    // If text no longer matches the selected series, deselect
+    if (value !== null) onChange(null)
     setOpen(true)
+  }
+
+  async function handleCreate() {
+    if (!trimmed || !category) return
+    const created = await window.db.addSeries(category, trimmed)
+    onChange(created.id)
+    setQuery(created.name)
+    setOpen(false)
   }
 
   function handleKeyDown(e) {
     if (e.key === 'Escape') setOpen(false)
-    if (e.key === 'Enter' && open) e.preventDefault() // don't submit form
+    if (e.key === 'Enter' && open) {
+      e.preventDefault()
+      if (isNew) handleCreate()
+      else if (filtered.length === 1) select(filtered[0])
+    }
   }
 
   return (
@@ -67,31 +84,27 @@ export default function SeriesSelect({ value, onChange, series, placeholder }) {
 
       {open && (
         <ul className="series-dropdown" role="listbox">
-          {/* "None" to clear selection — show only when not filtering */}
           {!trimmed && value && (
-            <li role="option" className="series-option series-option--none" onClick={() => select('')}>
+            <li role="option" className="series-option series-option--none" onClick={() => { onChange(null); setQuery(''); setOpen(false) }}>
               — None
             </li>
           )}
-
           {filtered.length === 0 && !isNew && (
             <li className="series-option series-option--empty">No matches</li>
           )}
-
           {filtered.map(s => (
             <li
-              key={s}
+              key={s.id}
               role="option"
-              aria-selected={s === value}
-              className={`series-option${s === value ? ' series-option--active' : ''}`}
+              aria-selected={s.id === value}
+              className={`series-option${s.id === value ? ' series-option--active' : ''}`}
               onClick={() => select(s)}
             >
-              {s}
+              {s.name}
             </li>
           ))}
-
           {isNew && (
-            <li role="option" className="series-option series-option--new" onClick={() => select(trimmed)}>
+            <li role="option" className="series-option series-option--new" onClick={handleCreate}>
               + Create &ldquo;{trimmed}&rdquo;
             </li>
           )}

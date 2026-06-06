@@ -4,12 +4,12 @@
   "description": "Electron + React + SQLite starter",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "npx @electron/rebuild -f -w better-sqlite3 && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build && electron-builder",
     "preview": "vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "npm rebuild better-sqlite3 && vitest run",
+    "test:watch": "npm rebuild better-sqlite3 && vitest",
     "build:renderer": "vite build",
     "test:e2e": "playwright test"
   },
