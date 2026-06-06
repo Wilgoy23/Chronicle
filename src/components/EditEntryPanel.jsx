@@ -15,13 +15,12 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         rating:    entry.rating    != null ? String(entry.rating) : '',
         notes:     entry.notes     ?? '',
         cover_url: entry.cover_url ?? '',
-        series:    entry.series    ?? '',
+        series_id: entry.series_id ?? null,
         date_read: entry.date_read ?? '',
       })
       setTimeout(() => titleRef.current?.focus(), 50)
     }
   }, [entry?.id])
-
 
   if (!entry || !form) return null
 
@@ -39,7 +38,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
       status:    form.status,
       rating:    form.rating !== '' ? Number(form.rating) : null,
       notes:     form.notes.trim(),
-      series:    form.series.trim() || null,
+      series_id: form.series_id ?? null,
       date_read: form.date_read || null,
     })
     setSaving(false)
@@ -53,102 +52,148 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
     onClose()
   }
 
-  const open = !!entry
+  const heroStyle = form.cover_url
+    ? { backgroundImage: `linear-gradient(to bottom, rgba(8,8,15,0) 0%, var(--bg2) 100%), url(${form.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center top' }
+    : { background: `linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--bg3)), var(--bg3))` }
 
   return (
-    <>
-      <div className={`panel-backdrop ${open ? 'visible' : ''}`} onClick={onClose} />
-
-      <aside className={`add-panel ${open ? 'open' : ''}`} style={{ '--accent': color }}>
+    <div className="edit-modal-backdrop" onClick={onClose}>
+      <aside className="edit-modal" style={{ '--accent': color }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
         <div className="panel-header">
           <h2>Edit Entry</h2>
-          <button className="panel-close" onClick={onClose}>✕</button>
+          <div className="panel-header-actions">
+            <button type="button" className="edit-delete-btn" onClick={handleDelete} title="Delete entry">
+              Delete
+            </button>
+            <button className="panel-close" onClick={onClose}>✕</button>
+          </div>
         </div>
 
-        {/* Cover preview */}
-        {form.cover_url && (
-          <div className="edit-cover-preview">
-            <img src={form.cover_url} alt={form.title} />
+        <form className="edit-form" onSubmit={handleSubmit}>
+          {/* Hero banner */}
+          <div className="edit-hero" style={heroStyle}>
+            {form.cover_url && (
+              <img src={form.cover_url} alt={form.title} className="edit-hero-cover" />
+            )}
+            {!form.cover_url && (
+              <div className="edit-hero-cover edit-hero-cover--empty" />
+            )}
           </div>
-        )}
 
-        <form className="panel-form" onSubmit={handleSubmit}>
-          <label>
-            Title <span className="required">*</span>
-            <input
-              ref={titleRef}
-              value={form.title}
-              onChange={e => set('title', e.target.value)}
-              required
-            />
-          </label>
+          {/* Scrollable fields */}
+          <div className="edit-fields">
 
-          <label>
-            Series <span className="subtle">(optional)</span>
-            <SeriesSelect
-              value={form.series}
-              onChange={val => set('series', val)}
-              series={seriesList}
-            />
-          </label>
+            {/* Details section */}
+            <div className="edit-section-label">Details</div>
 
-          <label>
-            Status
-            <select value={form.status} onChange={e => set('status', e.target.value)}>
-              {Object.entries(STATUS_LABELS).map(([val, label]) => (
-                <option key={val} value={val}>{label}</option>
-              ))}
-            </select>
-          </label>
+            <label className="edit-label">
+              Title <span className="required">*</span>
+              <input
+                ref={titleRef}
+                className="edit-input edit-input--title"
+                value={form.title}
+                onChange={e => set('title', e.target.value)}
+                required
+              />
+            </label>
 
-          <label>
-            Rating <span className="subtle">(1 – 10)</span>
-            <input
-              type="number"
-              min={1} max={10}
-              placeholder="—"
-              value={form.rating}
-              onChange={e => set('rating', e.target.value)}
-            />
-          </label>
+            <label className="edit-label">
+              Series <span className="subtle">(optional)</span>
+              <SeriesSelect
+                value={form.series_id}
+                onChange={val => set('series_id', val)}
+                series={seriesList}
+                category={entry.category}
+              />
+            </label>
 
-          <label>
-            Date Read
-            <input
-              type="date"
-              value={form.date_read}
-              onChange={e => set('date_read', e.target.value)}
-            />
-          </label>
+            <div className="edit-label">
+              Status
+              <div className="edit-segment">
+                {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`edit-seg-btn ${form.status === val ? 'active' : ''}`}
+                    onClick={() => set('status', val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <label>
-            Notes
-            <textarea
-              placeholder="Thoughts, recommendations…"
-              rows={5}
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
-            />
-          </label>
+            <div className="edit-label">
+              Rating
+              {form.rating !== '' && (
+                <span className="edit-rating-val">{form.rating} / 10</span>
+              )}
+              <div className="edit-slider-row">
+                <span className="edit-slider-bound">1</span>
+                <input
+                  type="range"
+                  className="edit-slider"
+                  min={1} max={10} step={1}
+                  value={form.rating !== '' ? form.rating : 5}
+                  onChange={e => set('rating', e.target.value)}
+                  onMouseEnter={e => { if (form.rating === '') set('rating', e.target.value) }}
+                />
+                <span className="edit-slider-bound">10</span>
+                {form.rating !== '' && (
+                  <button type="button" className="edit-clear-rating" onClick={() => set('rating', '')} title="Clear rating">
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
 
-          <label>
-            Cover URL <span className="subtle">(optional)</span>
-            <input
-              placeholder="https://…"
-              value={form.cover_url}
-              onChange={e => set('cover_url', e.target.value)}
-            />
-          </label>
+            {/* Extra section */}
+            <div className="edit-section-label edit-section-label--extra">Extra</div>
 
-          <button type="submit" className="submit-btn" disabled={saving}>
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
+            <div className="edit-two-col">
+              <label className="edit-label">
+                Date Read
+                <input
+                  type="date"
+                  className="edit-input"
+                  value={form.date_read}
+                  onChange={e => set('date_read', e.target.value)}
+                />
+              </label>
 
-          <button type="button" className="delete-btn" onClick={handleDelete}>
-            Delete Entry
-          </button>
+              <label className="edit-label">
+                Cover URL
+                <input
+                  className="edit-input"
+                  placeholder="https://…"
+                  value={form.cover_url}
+                  onChange={e => set('cover_url', e.target.value)}
+                />
+              </label>
+            </div>
+
+            <label className="edit-label">
+              Notes
+              <textarea
+                className="edit-input edit-notes"
+                placeholder="Thoughts, recommendations…"
+                rows={4}
+                value={form.notes}
+                onChange={e => set('notes', e.target.value)}
+              />
+            </label>
+
+          </div>
+
+          {/* Sticky footer */}
+          <div className="edit-footer">
+            <button type="submit" className="submit-btn" disabled={saving}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
         </form>
-      </aside>
-    </>
+        </aside>
+    </div>
   )
 }
