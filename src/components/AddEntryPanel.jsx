@@ -3,18 +3,23 @@ import { STATUS_LABELS } from '../App'
 import SeriesSelect from './SeriesSelect'
 
 const today = () => new Date().toISOString().slice(0, 10)
-const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series: '', date_read: today() }
+const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series_id: null, date_read: today() }
 
-export default function AddEntryPanel({ open, category, color, seriesList = [], defaultSeries = '', onClose, onAdded }) {
+export default function AddEntryPanel({ open, category, color, seriesList = [], defaultSeriesId = null, onClose, onAdded }) {
   const [form, setForm] = useState(DEFAULT)
   const titleRef = useRef(null)
 
   useEffect(() => {
     if (open) {
-      setForm({ ...DEFAULT, series: defaultSeries })
+      setForm({ ...DEFAULT, series_id: defaultSeriesId })
       setTimeout(() => titleRef.current?.focus(), 50)
     }
   }, [open, category])
+
+  // Sync defaultSeriesId if it arrives after open
+  useEffect(() => {
+    if (open) setForm(prev => ({ ...prev, series_id: defaultSeriesId }))
+  }, [defaultSeriesId])
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -23,17 +28,21 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.title.trim()) return
-    const entry = await window.db.addEntry({
+    const result = await window.db.addEntry({
       category,
       title:     form.title.trim(),
       status:    form.status,
       rating:    form.rating !== '' ? Number(form.rating) : null,
       notes:     form.notes.trim(),
       cover_url: form.cover_url || null,
-      series:    form.series.trim() || null,
+      series_id: form.series_id ?? null,
       date_read: form.date_read || null,
     })
-    onAdded(entry)
+    if (result?.error === 'DUPLICATE') {
+      alert(`"${form.title.trim()}" is already in your library.`)
+      return
+    }
+    onAdded(result)
     setForm(DEFAULT)
   }
 
@@ -43,7 +52,7 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
 
       <aside className={`add-panel ${open ? 'open' : ''}`} style={{ '--accent': color }}>
         <div className="panel-header">
-          <h2>New Entry</h2>
+          <h2>Add Manually</h2>
           <button className="panel-close" onClick={onClose}>✕</button>
         </div>
 
@@ -62,9 +71,10 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
           <label>
             Series <span className="subtle">(optional)</span>
             <SeriesSelect
-              value={form.series}
-              onChange={val => set('series', val)}
+              value={form.series_id}
+              onChange={val => set('series_id', val)}
               series={seriesList}
+              category={category}
             />
           </label>
 
@@ -94,6 +104,15 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
               type="date"
               value={form.date_read}
               onChange={e => set('date_read', e.target.value)}
+            />
+          </label>
+
+          <label>
+            Cover URL <span className="subtle">(optional)</span>
+            <input
+              placeholder="https://…"
+              value={form.cover_url}
+              onChange={e => set('cover_url', e.target.value)}
             />
           </label>
 

@@ -30,17 +30,21 @@ test('app window is visible', async () => {
 })
 
 test('sidebar shows all 4 categories', async () => {
-  await expect(page.locator('.nav-item', { hasText: 'Books' })).toBeVisible()
-  await expect(page.locator('.nav-item', { hasText: 'Anime' })).toBeVisible()
-  await expect(page.locator('.nav-item', { hasText: 'Movies' })).toBeVisible()
-  await expect(page.locator('.nav-item', { hasText: 'Games' })).toBeVisible()
+  // Use exact regex to avoid matching "All Books", "All Anime" etc in the series panel
+  await expect(page.locator('.nav-item', { hasText: /^Books$/ }).first()).toBeVisible()
+  await expect(page.locator('.nav-item', { hasText: /^Anime$/ }).first()).toBeVisible()
+  await expect(page.locator('.nav-item', { hasText: /^Movies$/ }).first()).toBeVisible()
+  await expect(page.locator('.nav-item', { hasText: /^Games$/ }).first()).toBeVisible()
 })
 
 // Helper: open Add Entry → click "Add manually" → fill form → save
 async function addEntryManually(title) {
-  await page.click('button.add-btn')
+  // Target topbar button specifically to avoid matching the empty-state add button
+  await page.locator('header.topbar button.add-btn').click()
   await page.waitForSelector('.search-modal', { state: 'visible' })
-  await page.click('button.search-manual-btn')
+  // Wait for footer to be rendered before clicking
+  await page.waitForSelector('button.search-manual-btn', { state: 'visible' })
+  await page.locator('button.search-manual-btn').click()
   await page.waitForSelector('aside.add-panel.open')
   await page.fill('aside.add-panel input[placeholder="e.g. Berserk"]', title)
   await page.click('aside.add-panel button.submit-btn')
@@ -64,7 +68,7 @@ test('duplicate entry shows alert and does not create a second card', async () =
   await addEntryManually('Unique Title')
   await expect(page.locator('.card-title', { hasText: 'Unique Title' })).toBeVisible()
 
-  // Attempt to add the same title again — expect the browser alert
+  // Attempt to add the same title again via manual panel — expect the browser alert
   page.once('dialog', dialog => dialog.dismiss())
   await addEntryManually('Unique Title')
   // Only one card should exist

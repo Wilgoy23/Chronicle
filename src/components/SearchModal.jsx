@@ -1,24 +1,48 @@
 import { useEffect, useRef, useState } from 'react'
-import HardcoverKeyPrompt from './HardcoverKeyPrompt'
 import SeriesSelect from './SeriesSelect'
 import { STATUS_LABELS } from '../App'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-export default function SearchModal({ open, category, color, seriesList, onAdd, onClose }) {
-  const [query, setQuery]       = useState('')
-  const [results, setResults]   = useState([])
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState(null)
-  const [needsKey, setNeedsKey] = useState(false)
-  const [addedIds, setAddedIds] = useState(new Set())
-  const [addCount, setAddCount] = useState(0)
-  const [defSeries, setDefSeries] = useState('')
+const API_LABELS = {
+  book:  'Hardcover',
+  anime: 'AniList',
+  movie: 'TMDB',
+  game:  'RAWG',
+}
+
+const KEY_HINTS = {
+  book:  'hardcover.app → Settings → API',
+  movie: 'themoviedb.org → Settings → API → API Key (v3)',
+  game:  'rawg.io → API Key (free account)',
+}
+
+async function doApiSearch(category, query) {
+  if (category === 'book')  return window.api.searchBooks(query)
+  if (category === 'anime') return window.api.searchAnime(query)
+  if (category === 'movie') return window.api.searchMovies(query)
+  if (category === 'game')  return window.api.searchGames(query)
+  return []
+}
+
+export default function SearchModal({
+  open, category, color, seriesList = [], existingEntries = [],
+  defaultSeriesId = null, onAdd, onAddManually, onClose,
+}) {
+  const [query, setQuery]         = useState('')
+  const [results, setResults]     = useState([])
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
+  const [needsKey, setNeedsKey]   = useState(false)
+  const [defSeriesId, setDefSeriesId] = useState(defaultSeriesId)
   const [defStatus, setDefStatus] = useState('completed')
+  const [addedIds, setAddedIds]   = useState(new Set())
+  const [addCount, setAddCount]   = useState(0)
   const debounceRef = useRef(null)
   const inputRef    = useRef(null)
 
-  // Reset state when opening or switching category
+  const existingTitles = new Set(existingEntries.map(e => e.title.toLowerCase()))
+
   useEffect(() => {
     if (open) {
       setQuery('')
@@ -27,28 +51,29 @@ export default function SearchModal({ open, category, color, seriesList, onAdd, 
       setNeedsKey(false)
       setAddedIds(new Set())
       setAddCount(0)
+      setDefSeriesId(defaultSeriesId)
       setTimeout(() => inputRef.current?.focus(), 60)
     }
   }, [open, category])
 
-  // Debounced search
+  // Keep defaultSeriesId in sync if parent changes it while modal is open
+  useEffect(() => { setDefSeriesId(defaultSeriesId) }, [defaultSeriesId])
+
   useEffect(() => {
     if (!query.trim()) { setResults([]); setError(null); return }
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => doSearch(query.trim()), 420)
+    debounceRef.current = setTimeout(() => runSearch(query.trim()), 420)
     return () => clearTimeout(debounceRef.current)
   }, [query, category])
 
-  async function doSearch(q) {
+  async function runSearch(q) {
     setLoading(true)
     setError(null)
     setNeedsKey(false)
-    const result = category === 'book'
-      ? await window.api.searchBooks(q)
-      : await window.api.searchAnime(q)
+    const result = await doApiSearch(category, q)
     setLoading(false)
     if (result?.error === 'NO_TOKEN') { setNeedsKey(true); return }
-    if (result?.error)                { setError(result.error); return }
+    if (result?.error) { setError(result.error); return }
     setResults(result ?? [])
   }
 
@@ -61,9 +86,10 @@ export default function SearchModal({ open, category, color, seriesList, onAdd, 
       rating:    r.score ?? null,
       notes:     r.description ?? '',
       cover_url: r.cover || null,
-      series:    defSeries.trim() || null,
+      series_id: defSeriesId ?? null,
       date_read: today(),
     })
+    if (entry?.error === 'DUPLICATE') return // already in library, button will show "In Library"
     setAddedIds(prev => new Set([...prev, r.id]))
     setAddCount(c => c + 1)
     onAdd(entry)
@@ -71,20 +97,17 @@ export default function SearchModal({ open, category, color, seriesList, onAdd, 
 
   if (!open) return null
 
+  const apiLabel = API_LABELS[category] ?? 'external API'
+
   return (
-    <div
-      className="search-modal-backdrop"
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
+    <div className="search-modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="search-modal" style={{ '--accent': color }}>
 
-        {/* ── Search bar ─────────────────────────────── */}
         <div className="search-modal-header">
-          <span className="search-icon">🔍</span>
           <input
             ref={inputRef}
             className="search-modal-input"
-            placeholder={category === 'book' ? 'Search Hardcover…' : 'Search AniList…'}
+            placeholder={`Search ${apiLabel}…`}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -93,65 +116,58 @@ export default function SearchModal({ open, category, color, seriesList, onAdd, 
         </div>
 
         {needsKey ? (
-          <div style={{ padding: '1rem' }}>
-            <HardcoverKeyPrompt
-              color={color}
-              onSaved={() => { setNeedsKey(false); if (query.trim()) doSearch(query.trim()) }}
-            />
+          <div className="search-needs-key">
+            <p className="search-needs-key-msg">
+              <strong>{apiLabel} API key required.</strong>
+              {KEY_HINTS[category] && (
+                <span> Get yours at <em>{KEY_HINTS[category]}</em> and add it in Settings → API Keys.</span>
+              )}
+            </p>
+            <div className="search-needs-key-actions">
+              <button className="add-btn" style={{ '--accent': color }} onClick={onAddManually}>
+                Add manually instead
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            {/* ── Batch defaults ─────────────────────── */}
             <div className="search-modal-options">
               <div className="search-opt-group">
                 <span className="search-opt-label">Series</span>
                 <SeriesSelect
-                  value={defSeries}
-                  onChange={setDefSeries}
+                  value={defSeriesId}
+                  onChange={setDefSeriesId}
                   series={seriesList}
+                  category={category}
                   placeholder="No series"
                 />
               </div>
               <div className="search-opt-group">
                 <span className="search-opt-label">Status</span>
-                <select
-                  className="search-opt-select"
-                  value={defStatus}
-                  onChange={e => setDefStatus(e.target.value)}
-                >
+                <select className="search-opt-select" value={defStatus} onChange={e => setDefStatus(e.target.value)}>
                   {Object.entries(STATUS_LABELS).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
               </div>
               {addCount > 0 && (
-                <span className="search-added-count">
-                  {addCount} {addCount === 1 ? 'entry' : 'entries'} added
-                </span>
+                <span className="search-added-count">{addCount} added</span>
               )}
             </div>
 
-            {/* ── Results ────────────────────────────── */}
             <ul className="search-modal-results">
-              {error && (
-                <li style={{ padding: '1rem' }}>
-                  <p className="search-error">{error}</p>
-                </li>
-              )}
+              {error && <li style={{ padding: '1rem' }}><p className="search-error">{error}</p></li>}
               {!loading && query && results.length === 0 && !error && (
-                <li>
-                  <p className="search-empty">No results for &ldquo;{query}&rdquo;</p>
-                </li>
+                <li><p className="search-empty">No results for &ldquo;{query}&rdquo;</p></li>
               )}
               {!query && (
-                <li className="search-modal-hint">
-                  Type above to search {category === 'book' ? 'Hardcover' : 'AniList'}
-                </li>
+                <li className="search-modal-hint">Type to search {apiLabel}</li>
               )}
               {results.map(r => {
+                const inLibrary = existingTitles.has(r.title.toLowerCase())
                 const added = addedIds.has(r.id)
                 return (
-                  <li key={r.id} className={`search-modal-result${added ? ' added' : ''}`}>
+                  <li key={r.id} className={`search-modal-result${added || inLibrary ? ' added' : ''}`}>
                     {r.cover
                       ? <img className="search-modal-cover" src={r.cover} alt="" loading="lazy" />
                       : <div className="search-modal-cover search-modal-cover--empty" />
@@ -168,16 +184,22 @@ export default function SearchModal({ open, category, color, seriesList, onAdd, 
                       )}
                     </div>
                     <button
-                      className={`search-add-btn${added ? ' search-add-btn--added' : ''}`}
+                      className={`search-add-btn${added || inLibrary ? ' search-add-btn--added' : ''}`}
                       onClick={() => handleAdd(r)}
-                      disabled={added}
+                      disabled={added || inLibrary}
                     >
-                      {added ? '✓ Added' : '+ Add'}
+                      {inLibrary ? 'In Library' : added ? '✓ Added' : '+ Add'}
                     </button>
                   </li>
                 )
               })}
             </ul>
+
+            <div className="search-modal-footer">
+              <button className="search-manual-btn" onClick={onAddManually}>
+                Can&rsquo;t find it? Add manually
+              </button>
+            </div>
           </>
         )}
       </div>
