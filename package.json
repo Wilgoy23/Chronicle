@@ -54,7 +54,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createchronicleShortcut": true
+      "createDesktopShortcut": true
     },
     "directories": {
       "output": "release"
