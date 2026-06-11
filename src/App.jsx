@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AddEntryPanel from './components/AddEntryPanel'
 import EditEntryPanel from './components/EditEntryPanel'
 import EntryCard from './components/EntryCard'
@@ -72,11 +72,13 @@ export default function App() {
   const [view, setView]               = useState('grid')
   const [statusFilter, setStatusFilter] = useState('all')
   const [seriesFilter, setSeriesFilter] = useState(null) // series_id | null
-  const [sidebarView, setSidebarView] = useState('categories')
+  const [expandedCategories, setExpandedCategories] = useState([DEFAULT_CATEGORIES[0].id])
+  const [categorySeriesCache, setCategorySeriesCache] = useState({})
   const [pendingSeriesId, setPendingSeriesId] = useState(null)
   const [newSeriesName, setNewSeriesName]     = useState('')
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
   const [sidebarOpen, setSidebarOpen]         = useState(false)
+  const pendingSeriesFilterRef = useRef(null)
 
   useEffect(() => {
     window.settings.get().then(s => {
@@ -90,20 +92,59 @@ export default function App() {
 
   const visibleCats     = categories.filter(c => c.enabled)
   const activeCat       = visibleCats.find(c => c.id === category) ?? visibleCats[0]
-  const showSeriesPanel = page === 'collection' && sidebarView === 'series'
 
   useEffect(() => {
     if (activeCat) {
-      setSeriesFilter(null)
+      const pendingSeries = pendingSeriesFilterRef.current
+      pendingSeriesFilterRef.current = null
+      setSeriesFilter(pendingSeries)
       setShowNewSeriesInput(false)
       setNewSeriesName('')
       window.db.getEntries(activeCat.id).then(setEntries)
       window.db.getSeries(activeCat.id).then(setSeriesList)
+      setExpandedCategories(prev => prev.includes(activeCat.id) ? prev : [...prev, activeCat.id])
     }
   }, [activeCat?.id])
 
   function refreshSeriesList() {
     window.db.getSeries(activeCat.id).then(setSeriesList)
+  }
+
+  function snapshotCategorySeries(catId) {
+    setCategorySeriesCache(prev => ({
+      ...prev,
+      [catId]: seriesList.map(s => ({
+        id: s.id,
+        name: s.name,
+        count: entries.filter(e => e.series_id === s.id).length,
+      })),
+    }))
+  }
+
+  function handleCategoryClick(catId) {
+    if (catId === activeCat?.id) {
+      setExpandedCategories(prev =>
+        prev.includes(catId) ? prev.filter(id => id !== catId) : [...prev, catId]
+      )
+    } else {
+      if (activeCat) snapshotCategorySeries(activeCat.id)
+      setCategory(catId)
+      setExpandedCategories(prev => prev.includes(catId) ? prev : [...prev, catId])
+      setSidebarOpen(false)
+    }
+  }
+
+  function selectSeriesInOtherCategory(catId, seriesId) {
+    if (activeCat) snapshotCategorySeries(activeCat.id)
+    pendingSeriesFilterRef.current = seriesId
+    setCategory(catId)
+    setExpandedCategories(prev => prev.includes(catId) ? prev : [...prev, catId])
+    setSidebarOpen(false)
+  }
+
+  function toggleActiveSeriesFilter(seriesId) {
+    setSeriesFilter(prev => prev === seriesId ? null : seriesId)
+    setSidebarOpen(false)
   }
 
   function handleAdded(entry) {
@@ -162,7 +203,6 @@ export default function App() {
 
   function handleSettingsReturn() {
     setPage('collection')
-    setSidebarView('categories')
     window.settings.get().then(s => {
       if (s.categories) setCategories(s.categories)
     })
@@ -179,83 +219,88 @@ export default function App() {
       <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar-logo">Chronicle</div>
 
-        <div className="sidebar-panels">
-          {/* Panel 1: Categories */}
-          <div className={`sidebar-panel ${!showSeriesPanel ? 'panel-active' : 'panel-exit-left'}`}>
-            <nav className="sidebar-nav">
-              {page === 'collection' && visibleCats.map(cat => (
+        <nav className="sidebar-nav">
+          {page === 'collection' && visibleCats.map(cat => {
+            const isActive   = activeCat?.id === cat.id
+            const isExpanded = expandedCategories.includes(cat.id)
+            const seriesForCat = isActive
+              ? seriesList.map(s => ({
+                  id: s.id,
+                  name: s.name,
+                  count: entries.filter(e => e.series_id === s.id).length,
+                }))
+              : (categorySeriesCache[cat.id] ?? [])
+
+            return (
+              <div className="nav-category" key={cat.id}>
                 <button
-                  key={cat.id}
-                  className={`nav-item ${category === cat.id ? 'active' : ''}`}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
                   style={{ '--accent': cat.color }}
-                  onClick={() => { setCategory(cat.id); setSidebarView('series'); setSidebarOpen(false) }}
+                  onClick={() => handleCategoryClick(cat.id)}
                 >
                   <span className="nav-icon">{ICONS[cat.id]}</span>
                   <span>{cat.label}</span>
-                  {category === cat.id && entries.length > 0 && (
-                    <span className="nav-count">{entries.length}</span>
-                  )}
+                  <span className="nav-item-end">
+                    {isActive && entries.length > 0 && (
+                      <span className="nav-count">{entries.length}</span>
+                    )}
+                    <span className={`nav-chevron ${isExpanded ? 'expanded' : ''}`}>▾</span>
+                  </span>
                 </button>
-              ))}
-            </nav>
-          </div>
 
-          {/* Panel 2: Series drill-down */}
-          <div className={`sidebar-panel ${showSeriesPanel ? 'panel-active' : 'panel-enter-right'}`}>
-            <button
-              className="sidebar-back-btn"
-              style={{ '--accent': activeCat?.color }}
-              onClick={() => { setSidebarView('categories'); setSeriesFilter(null) }}
-            >
-              {ICONS.back}
-              <span>{activeCat?.label}</span>
-            </button>
-
-            <nav className="sidebar-nav" style={{ '--accent': activeCat?.color }}>
-              {showNewSeriesInput ? (
-                <div className="sidebar-series-input-row" style={{ margin: '0 0 4px' }}>
-                  <input
-                    autoFocus
-                    className="sidebar-series-input"
-                    placeholder="Series name…"
-                    value={newSeriesName}
-                    onChange={e => setNewSeriesName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleNewSeries(newSeriesName)
-                      if (e.key === 'Escape') { setShowNewSeriesInput(false); setNewSeriesName('') }
-                    }}
-                  />
-                  <button className="sidebar-series-confirm-btn" onClick={() => handleNewSeries(newSeriesName)}>+</button>
-                </div>
-              ) : (
-                <button className="sidebar-new-series-btn" style={{ marginBottom: '4px' }} onClick={() => setShowNewSeriesInput(true)}>
-                  + New series
-                </button>
-              )}
-              <button
-                className={`nav-item ${seriesFilter == null ? 'active' : ''}`}
-                style={{ '--accent': activeCat?.color }}
-                onClick={() => setSeriesFilter(null)}
-              >
-                <span className="nav-icon">{ICONS[activeCat?.id]}</span>
-                <span>All {activeCat?.label}</span>
-                {entries.length > 0 && <span className="nav-count">{entries.length}</span>}
-              </button>
-              {seriesList.map(s => (
-                <button
-                  key={s.id}
-                  className={`nav-item ${seriesFilter === s.id ? 'active' : ''}`}
-                  style={{ '--accent': activeCat?.color }}
-                  onClick={() => setSeriesFilter(prev => prev === s.id ? null : s.id)}
-                >
-                  <span className="nav-icon series-nav-dot-icon">◆</span>
-                  <span>{s.name}</span>
-                  <span className="nav-count">{entries.filter(e => e.series_id === s.id).length}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
+                {isExpanded && (
+                  <div className="sidebar-series" style={{ '--accent': cat.color }}>
+                    {isActive && (
+                      showNewSeriesInput ? (
+                        <div className="sidebar-series-input-row" style={{ marginBottom: '4px' }}>
+                          <input
+                            autoFocus
+                            className="sidebar-series-input"
+                            placeholder="Series name…"
+                            value={newSeriesName}
+                            onChange={e => setNewSeriesName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleNewSeries(newSeriesName)
+                              if (e.key === 'Escape') { setShowNewSeriesInput(false); setNewSeriesName('') }
+                            }}
+                          />
+                          <button className="sidebar-series-confirm-btn" onClick={() => handleNewSeries(newSeriesName)}>+</button>
+                        </div>
+                      ) : (
+                        <button className="sidebar-new-series-btn" style={{ marginBottom: '4px' }} onClick={() => setShowNewSeriesInput(true)}>
+                          + New series
+                        </button>
+                      )
+                    )}
+                    <div className="sidebar-series-list">
+                      {isActive && (
+                        <button
+                          className={`sidebar-series-item ${seriesFilter == null ? 'active' : ''}`}
+                          onClick={() => { setSeriesFilter(null); setSidebarOpen(false) }}
+                        >
+                          <span className="sidebar-series-dot" />
+                          <span>All {cat.label}</span>
+                          {entries.length > 0 && <span className="sidebar-series-count">{entries.length}</span>}
+                        </button>
+                      )}
+                      {seriesForCat.map(s => (
+                        <button
+                          key={s.id}
+                          className={`sidebar-series-item ${isActive && seriesFilter === s.id ? 'active' : ''}`}
+                          onClick={() => isActive ? toggleActiveSeriesFilter(s.id) : selectSeriesInOtherCategory(cat.id, s.id)}
+                        >
+                          <span className="sidebar-series-dot" />
+                          <span>{s.name}</span>
+                          <span className="sidebar-series-count">{s.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </nav>
 
         <div className="sidebar-bottom">
           <button
