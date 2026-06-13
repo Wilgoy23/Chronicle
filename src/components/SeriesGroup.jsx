@@ -2,7 +2,7 @@ import { useState } from 'react'
 import EntryCard from './EntryCard'
 import { STATUS_LABELS } from '../App'
 
-export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onDropEntry }) {
+export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onDropEntry, onDeleteSeries }) {
   const [expanded, setExpanded] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
@@ -59,7 +59,16 @@ export default function SeriesGroup({ seriesId, name, entries, color, onDelete, 
         <div className="series-info">
           <div className="series-header-top">
             <span className="series-name">{name}</span>
-            <span className="series-chevron">{expanded ? '▲' : '▼'}</span>
+            <div className="series-header-actions">
+              <button
+                className="series-delete-btn"
+                onClick={e => { e.stopPropagation(); onDeleteSeries?.(seriesId, name) }}
+                title={`Delete ${name}`}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+              <span className="series-chevron">{expanded ? '▲' : '▼'}</span>
+            </div>
           </div>
           <div className="series-sub">
             {entries.length === 0
