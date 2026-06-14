@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181830"/>
+      <stop offset="100%" stop-color="#05050c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="68%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.40"/>
+      <stop offset="55%" stop-color="#6366f1" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a5b4fc"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <radialGradient id="dot" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#fde6a4"/>
+      <stop offset="55%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#e8a838"/>
+    </radialGradient>
+    <filter id="ringShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="dotShadow" x="-100%" y="-100%" width="300%" height="300%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#glow)"/>
+
+  <path d="M 710 710 A 280 280 0 1 1 710 314" fill="none" stroke="url(#ring)" stroke-width="120" stroke-linecap="round" filter="url(#ringShadow)"/>
+
+  <circle cx="710" cy="314" r="86" fill="url(#dot)" filter="url(#dotShadow)"/>
+</svg>
