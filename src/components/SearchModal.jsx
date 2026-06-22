@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import SeriesSelect from './SeriesSelect'
+import Cover from './Cover'
 import { STATUS_LABELS } from '../App'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -9,6 +10,14 @@ const API_LABELS = {
   anime: 'AniList',
   movie: 'TMDB',
   game:  'RAWG',
+}
+
+// Stable source keys persisted with each entry so releases can be looked up later.
+const SOURCE_KEYS = {
+  book:  'hardcover',
+  anime: 'anilist',
+  movie: 'tmdb',
+  game:  'rawg',
 }
 
 const KEY_HINTS = {
@@ -88,6 +97,8 @@ export default function SearchModal({
       cover_url: r.cover || null,
       series_id: defSeriesId ?? null,
       date_read: today(),
+      source:    SOURCE_KEYS[category] ?? null,
+      source_id: r.id ?? null,
     })
     if (entry?.error === 'DUPLICATE') return // already in library, button will show "In Library"
     setAddedIds(prev => new Set([...prev, r.id]))
@@ -168,10 +179,7 @@ export default function SearchModal({
                 const added = addedIds.has(r.id)
                 return (
                   <li key={r.id} className={`search-modal-result${added || inLibrary ? ' added' : ''}`}>
-                    {r.cover
-                      ? <img className="search-modal-cover" src={r.cover} alt="" loading="lazy" />
-                      : <div className="search-modal-cover search-modal-cover--empty" />
-                    }
+                    <Cover className="search-modal-cover" src={r.cover} alt="" compact />
                     <div className="search-modal-info">
                       <strong className="search-modal-title">{r.title}</strong>
                       {(r.author || r.genres) && (

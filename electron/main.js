@@ -1,8 +1,11 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, Notification } = require('electron')
 const path   = require('path')
 const fs     = require('fs')
-const { initDb }           = require('./db')
+const { initDb, getReleases, setReleaseStatus, unseenReleaseCount } = require('./db')
 const { registerHandlers } = require('./ipc')
+const { runReleaseScan }   = require('./releaseChecker')
+
+let mainWindow = null
 
 Menu.setApplicationMenu(null)
 
@@ -36,6 +39,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   })
+  mainWindow = win
 
   if (isDev) {
     win.loadURL('http://localhost:5173')
@@ -43,6 +47,40 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  // Scan for new releases shortly after the UI is ready (throttled to once/day).
+  win.webContents.once('did-finish-load', () => {
+    performScan({ force: false }).catch(err => console.error('[releases] scan failed:', err))
+  })
+}
+
+// Runs a release scan, fires OS notifications for genuinely-new items,
+// and tells the renderer to refresh its inbox/badge.
+async function performScan(opts) {
+  let fresh = []
+  try {
+    fresh = await runReleaseScan(readSettings, writeSettings, opts)
+  } catch (err) {
+    console.error('[releases] scan error:', err)
+    return []
+  }
+
+  if (fresh.length && Notification.isSupported()) {
+    if (fresh.length === 1) {
+      const r = fresh[0]
+      new Notification({ title: 'New release', body: `${r.title} — ${r.relation ?? 'new in a series you follow'}` }).show()
+    } else {
+      new Notification({
+        title: `${fresh.length} new releases`,
+        body: fresh.slice(0, 3).map(r => r.title).join(', ') + (fresh.length > 3 ? '…' : ''),
+      }).show()
+    }
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('releases:updated')
+  }
+  return fresh
 }
 
 app.whenReady().then(() => {
@@ -54,6 +92,10 @@ app.whenReady().then(() => {
     writeSettings(next)
     return next
   })
+
+  ipcMain.handle('releases:get',       () => ({ items: getReleases(), unseen: unseenReleaseCount() }))
+  ipcMain.handle('releases:setStatus', (_e, id, status) => setReleaseStatus(id, status))
+  ipcMain.handle('releases:checkNow',  () => performScan({ force: true }))
 
   registerHandlers(readSettings)
   createWindow()

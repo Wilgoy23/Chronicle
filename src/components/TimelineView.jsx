@@ -1,4 +1,5 @@
 import { STATUS_LABELS } from '../App'
+import Cover from './Cover'
 
 const STATUS_COLORS = {
   completed:   '#4ade80',
@@ -82,9 +83,7 @@ function TimelineCard({ entry, color, onDelete, onEdit }) {
       style={{ '--accent': color, cursor: 'pointer' }}
       onClick={() => onEdit?.(entry)}
     >
-      {entry.cover_url && (
-        <img className="tl-cover" src={entry.cover_url} alt={entry.title} loading="lazy" />
-      )}
+      <Cover className="tl-cover" src={entry.cover_url} alt={entry.title} compact />
       <div className="tl-info">
         <span className="tl-title">{entry.title}</span>
         {entry.series && <span className="tl-series">{entry.series}</span>}

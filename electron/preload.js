@@ -22,3 +22,14 @@ contextBridge.exposeInMainWorld('api', {
   searchMovies: (query) => ipcRenderer.invoke('api:searchMovies', query),
   searchGames:  (query) => ipcRenderer.invoke('api:searchGames',  query),
 })
+
+contextBridge.exposeInMainWorld('releases', {
+  get:       ()            => ipcRenderer.invoke('releases:get'),
+  setStatus: (id, status)  => ipcRenderer.invoke('releases:setStatus', id, status),
+  checkNow:  ()            => ipcRenderer.invoke('releases:checkNow'),
+  onUpdated: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('releases:updated', handler)
+    return () => ipcRenderer.removeListener('releases:updated', handler)
+  },
+})

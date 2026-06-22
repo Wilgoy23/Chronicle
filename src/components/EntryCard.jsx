@@ -1,4 +1,5 @@
 import { STATUS_LABELS } from '../App'
+import Cover from './Cover'
 
 const STATUS_COLORS = {
   completed:   '#4ade80',
@@ -26,33 +27,22 @@ export default function EntryCard({ entry, color, onDelete, onEdit }) {
       onDragStart={handleDragStart}
       onClick={() => onEdit?.(entry)}
     >
-      {entry.cover_url ? (
-        <div className="card-cover-wrap">
-          <img
-            className="card-cover"
-            src={entry.cover_url}
-            alt={entry.title}
-            loading="lazy"
-          />
-          {/* Status chip */}
-          <div className="cover-status">
-            <span className="cover-status-dot" style={{ background: STATUS_COLORS[entry.status] }} />
-            <span className="cover-status-label" style={{ color: STATUS_COLORS[entry.status] }}>
-              {STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]}
-            </span>
+      <div className="card-cover-wrap">
+        <Cover className="card-cover" src={entry.cover_url} alt={entry.title} />
+        {/* Status chip */}
+        <div className="cover-status">
+          <span className="cover-status-dot" style={{ background: STATUS_COLORS[entry.status] }} />
+          <span className="cover-status-label" style={{ color: STATUS_COLORS[entry.status] }}>
+            {STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]}
+          </span>
+        </div>
+        {/* Rating badge */}
+        {entry.rating && (
+          <div className="cover-rating">
+            {entry.rating}<span className="cover-rating-max">/10</span>
           </div>
-          {/* Rating badge */}
-          {entry.rating && (
-            <div className="cover-rating">
-              {entry.rating}<span className="cover-rating-max">/10</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="card-placeholder">
-          {entry.category === 'book' ? '📖' : entry.category === 'anime' ? '⛩' : entry.category === 'movie' ? '🎬' : '🎮'}
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Delete overlay */}
       <div className="card-actions">
@@ -65,20 +55,6 @@ export default function EntryCard({ entry, color, onDelete, onEdit }) {
 
       <div className="card-body">
         <h3 className="card-title">{entry.title}</h3>
-
-        {/* Show status/rating below title for no-cover cards */}
-        {!entry.cover_url && (
-          <div className="card-meta">
-            <span className="status-badge" style={{ color: STATUS_COLORS[entry.status] }}>
-              {STATUS_LABELS[entry.status] ?? entry.status}
-            </span>
-            {entry.rating && (
-              <span className="rating-badge" style={{ '--accent': color }}>
-                {entry.rating}<span className="rating-max">/10</span>
-              </span>
-            )}
-          </div>
-        )}
 
         {entry.series && (
           <span className="card-series-tag">{entry.series}</span>

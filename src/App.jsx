@@ -7,6 +7,7 @@ import SearchModal from './components/SearchModal'
 import SeriesGroup from './components/SeriesGroup'
 import TimelineView from './components/TimelineView'
 import SettingsPage from './components/SettingsPage'
+import ReleasesPanel from './components/ReleasesPanel'
 
 export const DEFAULT_CATEGORIES = [
   { id: 'book',  label: 'Books',  icon: '📖', color: '#e8a838', enabled: true },
@@ -28,6 +29,7 @@ const ICONS = {
   back:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
   menu:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   trash:    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+  bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
 }
 
 export const STATUS_LABELS = {
@@ -79,12 +81,54 @@ export default function App() {
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
   const [sidebarOpen, setSidebarOpen]         = useState(false)
   const [seriesToDelete, setSeriesToDelete]   = useState(null) // { id, name }
+  const [releases, setReleases]       = useState([])
+  const [unseenReleases, setUnseen]   = useState(0)
+  const [releasesOpen, setReleasesOpen] = useState(false)
 
   useEffect(() => {
     window.settings.get().then(s => {
       if (s.categories) setCategories(s.categories)
     })
   }, [])
+
+  // Load detected releases and keep them fresh when a background scan finishes.
+  useEffect(() => {
+    if (!window.releases) return
+    const load = () =>
+      window.releases.get().then(({ items, unseen }) => { setReleases(items); setUnseen(unseen) })
+    load()
+    const off = window.releases.onUpdated(load)
+    return off
+  }, [])
+
+  async function openReleases() {
+    setReleasesOpen(true)
+    // Clear the unread badge without removing items from the inbox.
+    const unread = releases.filter(r => r.status === 'new')
+    setUnseen(0)
+    await Promise.all(unread.map(r => window.releases.setStatus(r.id, 'seen')))
+  }
+
+  async function handleAddRelease(release) {
+    const entry = await window.db.addEntry({
+      category:  release.category,
+      title:     release.title,
+      status:    'planned',
+      cover_url: release.cover_url || null,
+      source:    release.source,
+      source_id: release.source_id,
+    })
+    await window.releases.setStatus(release.id, 'added')
+    setReleases(prev => prev.filter(r => r.id !== release.id))
+    if (entry && !entry.error && release.category === activeCat?.id) {
+      setEntries(prev => [entry, ...prev])
+    }
+  }
+
+  async function handleDismissRelease(release) {
+    await window.releases.setStatus(release.id, 'dismissed')
+    setReleases(prev => prev.filter(r => r.id !== release.id))
+  }
 
   const filteredEntries = entries
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
@@ -338,6 +382,17 @@ export default function App() {
               <span className="topbar-count">{entries.length}</span>
             </div>
             <div className="topbar-actions">
+              <button
+                className="bell-btn"
+                onClick={openReleases}
+                title="New releases"
+                aria-label="New releases"
+              >
+                {ICONS.bell}
+                {unseenReleases > 0 && (
+                  <span className="bell-badge">{unseenReleases > 9 ? '9+' : unseenReleases}</span>
+                )}
+              </button>
               <div className="view-toggle">
                 <button
                   className={`view-btn ${view === 'grid' ? 'active' : ''}`}
@@ -465,6 +520,15 @@ export default function App() {
             onClose={() => setEditingEntry(null)}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
+          />
+
+          <ReleasesPanel
+            open={releasesOpen}
+            releases={releases}
+            color={activeCat?.color}
+            onClose={() => setReleasesOpen(false)}
+            onAdd={handleAddRelease}
+            onDismiss={handleDismissRelease}
           />
         </main>
       )}

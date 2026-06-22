@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import EntryCard from './EntryCard'
+import Cover from './Cover'
 import { STATUS_LABELS } from '../App'
 
 export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onDropEntry, onDeleteSeries }) {
@@ -51,7 +52,7 @@ export default function SeriesGroup({ seriesId, name, entries, color, onDelete, 
         <div className="series-covers">
           {covers.map((url, i) =>
             url
-              ? <img key={i} src={url} alt="" className="series-thumb" loading="lazy" />
+              ? <Cover key={i} src={url} alt="" className="series-thumb" compact />
               : <div key={i} className="series-thumb-empty" />
           )}
         </div>

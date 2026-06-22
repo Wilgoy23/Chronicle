@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
 
 const SECTIONS = [
-  { id: 'api',        label: 'API Keys',    icon: '🔑' },
-  { id: 'categories', label: 'Categories',  icon: '📂' },
-  { id: 'data',       label: 'Data',        icon: '🗄' },
+  { id: 'api',           label: 'API Keys',      icon: '🔑' },
+  { id: 'categories',    label: 'Categories',    icon: '📂' },
+  { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'data',          label: 'Data',          icon: '🗄' },
+]
+
+const NOTIF_CATEGORIES = [
+  { id: 'book',  label: 'Books' },
+  { id: 'anime', label: 'Anime' },
+  { id: 'movie', label: 'Movies' },
+  { id: 'game',  label: 'Games' },
 ]
 
 export default function SettingsPage() {
@@ -44,9 +52,10 @@ export default function SettingsPage() {
       <div className="settings-content">
         {saved && <div className="settings-toast">✓ Saved</div>}
 
-        {section === 'api'        && <ApiSection        settings={settings} onSave={save} />}
-        {section === 'categories' && <CategoriesSection settings={settings} onSave={save} />}
-        {section === 'data'       && <DataSection />}
+        {section === 'api'           && <ApiSection           settings={settings} onSave={save} />}
+        {section === 'categories'    && <CategoriesSection    settings={settings} onSave={save} />}
+        {section === 'notifications' && <NotificationsSection settings={settings} onSave={save} />}
+        {section === 'data'          && <DataSection />}
       </div>
     </div>
   )
@@ -172,6 +181,93 @@ function CategoriesSection({ settings, onSave }) {
         onClick={() => onSave({ categories: cats })}>
         Save Changes
       </button>
+    </section>
+  )
+}
+
+// ── Notifications ──────────────────────────────────
+function NotificationsSection({ settings, onSave }) {
+  const notif = settings.notifications ?? {}
+  const enabled = notif.enabled !== false
+  const cats = notif.categories ?? { book: true, anime: true, movie: true, game: true }
+  const [checking, setChecking] = useState(false)
+  const [result, setResult]     = useState(null)
+
+  function patchNotif(patch) {
+    onSave({ notifications: { ...notif, enabled, categories: cats, ...patch } })
+  }
+
+  function toggleEnabled() {
+    patchNotif({ enabled: !enabled })
+  }
+
+  function toggleCat(id) {
+    patchNotif({ categories: { ...cats, [id]: cats[id] === false } })
+  }
+
+  async function checkNow() {
+    setChecking(true)
+    setResult(null)
+    try {
+      const fresh = await window.releases.checkNow()
+      const n = Array.isArray(fresh) ? fresh.length : 0
+      setResult(n === 0 ? 'No new releases found.' : `Found ${n} new release${n === 1 ? '' : 's'}.`)
+    } catch {
+      setResult('Check failed — see console.')
+    }
+    setChecking(false)
+  }
+
+  const lastCheck = notif.lastCheck ? new Date(notif.lastCheck).toLocaleString() : 'Never'
+
+  return (
+    <section className="settings-section">
+      <h2>Notifications</h2>
+      <p className="settings-desc">
+        Chronicle checks series in your library for sequels and new installments,
+        about once a day when the app opens.
+      </p>
+
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>Release notifications</label>
+          <span className="setting-hint">Detect and notify about new releases.</span>
+        </div>
+        <label className="cat-toggle">
+          <input type="checkbox" checked={enabled} onChange={toggleEnabled} />
+          <span className="cat-label"><span>{enabled ? 'On' : 'Off'}</span></span>
+        </label>
+      </div>
+
+      {enabled && (
+        <>
+          <div className="cat-list" style={{ marginTop: '0.75rem' }}>
+            {NOTIF_CATEGORIES.map(c => (
+              <div key={c.id} className="cat-row">
+                <label className="cat-toggle">
+                  <input
+                    type="checkbox"
+                    checked={cats[c.id] !== false}
+                    onChange={() => toggleCat(c.id)}
+                  />
+                  <span className="cat-label"><span>{c.label}</span></span>
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div className="setting-row" style={{ marginTop: '1rem' }}>
+            <div className="setting-info">
+              <label>Last checked</label>
+              <span className="setting-hint">{lastCheck}</span>
+            </div>
+            <button className="save-field-btn" onClick={checkNow} disabled={checking}>
+              {checking ? 'Checking…' : 'Check now'}
+            </button>
+          </div>
+          {result && <span className="setting-status ok">{result}</span>}
+        </>
+      )}
     </section>
   )
 }

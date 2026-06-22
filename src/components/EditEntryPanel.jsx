@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_CATEGORIES, STATUS_LABELS } from '../App'
 import SeriesSelect from './SeriesSelect'
+import Cover from './Cover'
 
 export default function EditEntryPanel({ entry, color, seriesList = [], onClose, onUpdate, onDelete }) {
   const [form, setForm]     = useState(null)
@@ -72,11 +73,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         <form className="edit-form" onSubmit={handleSubmit}>
           {/* Hero banner — cover pokes up from bottom, title + meta alongside */}
           <div className="edit-hero" style={heroStyle}>
-            {form.cover_url ? (
-              <img src={form.cover_url} alt={form.title} className="edit-hero-cover" />
-            ) : (
-              <div className="edit-hero-cover edit-hero-cover--empty" />
-            )}
+            <Cover src={form.cover_url} alt={form.title} className="edit-hero-cover" />
             <div className="edit-hero-info">
               <div className="edit-hero-title">{form.title || entry.title}</div>
               <div className="edit-hero-meta">{heroMeta}</div>
