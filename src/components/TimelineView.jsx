@@ -91,7 +91,7 @@ function TimelineCard({ entry, color, onDelete, onEdit }) {
           <span className="tl-status" style={{ color: STATUS_COLORS[entry.status] }}>
             ● {STATUS_LABELS[entry.status] ?? entry.status}
           </span>
-          {entry.rating && (
+          {entry.rating && entry.status !== 'planned' && (
             <span className="tl-rating" style={{ '--accent': color }}>
               {entry.rating}/10
             </span>

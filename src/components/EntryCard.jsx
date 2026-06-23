@@ -36,8 +36,8 @@ export default function EntryCard({ entry, color, onDelete, onEdit }) {
             {STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]}
           </span>
         </div>
-        {/* Rating badge */}
-        {entry.rating && (
+        {/* Rating badge — hidden for planned entries (not consumed yet) */}
+        {entry.rating && entry.status !== 'planned' && (
           <div className="cover-rating">
             {entry.rating}<span className="cover-rating-max">/10</span>
           </div>
