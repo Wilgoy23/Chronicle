@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AddEntryPanel from './components/AddEntryPanel'
 import ConfirmDialog from './components/ConfirmDialog'
 import EditEntryPanel from './components/EditEntryPanel'
@@ -30,6 +30,7 @@ const ICONS = {
   menu:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   trash:    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
   bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+  search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
 }
 
 export const STATUS_LABELS = {
@@ -76,6 +77,8 @@ export default function App() {
   const [view, setView]               = useState('grid')
   const [statusFilter, setStatusFilter] = useState('all')
   const [seriesFilter, setSeriesFilter] = useState(null) // series_id | null
+  const [search, setSearch]           = useState('')
+  const searchRef                     = useRef(null)
   const [pendingSeriesId, setPendingSeriesId] = useState(null)
   const [newSeriesName, setNewSeriesName]     = useState('')
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
@@ -130,9 +133,14 @@ export default function App() {
     setReleases(prev => prev.filter(r => r.id !== release.id))
   }
 
+  const query = search.trim().toLowerCase()
   const filteredEntries = entries
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
     .filter(e => seriesFilter == null || e.series_id === seriesFilter)
+    .filter(e => !query ||
+      e.title.toLowerCase().includes(query) ||
+      (e.series && e.series.toLowerCase().includes(query)) ||
+      (e.notes && e.notes.toLowerCase().includes(query)))
 
   const visibleCats     = categories.filter(c => c.enabled)
   const activeCat       = visibleCats.find(c => c.id === category) ?? visibleCats[0]
@@ -140,6 +148,7 @@ export default function App() {
   useEffect(() => {
     if (activeCat) {
       setSeriesFilter(null)
+      setSearch('')
       setShowNewSeriesInput(false)
       setNewSeriesName('')
       window.db.getEntries(activeCat.id).then(setEntries)
@@ -432,6 +441,21 @@ export default function App() {
                 {f.label}
               </button>
             ))}
+
+            <div className="filter-search">
+              <span className="filter-search-icon">{ICONS.search}</span>
+              <input
+                ref={searchRef}
+                className="filter-search-input"
+                placeholder={`Search ${activeCat?.label.toLowerCase()}…`}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setSearch('') }}
+              />
+              {search && (
+                <button className="filter-search-clear" onClick={() => setSearch('')} title="Clear search">✕</button>
+              )}
+            </div>
           </div>
 
           {view === 'timeline' ? (
@@ -445,25 +469,37 @@ export default function App() {
               />
               {filteredEntries.length === 0 && (
                 <div className="empty-state">
-                  <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                  <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
-                    Add your first
-                  </button>
+                  {query ? (
+                    <p>No matches for &ldquo;{search}&rdquo;.</p>
+                  ) : (
+                    <>
+                      <p>No {activeCat?.label.toLowerCase()} yet.</p>
+                      <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
+                        Add your first
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           ) : null}
 
           <div className="entries-grid" style={{ display: view === 'grid' ? undefined : 'none' }}>
-            {filteredEntries.length === 0 && seriesList.length === 0 && (
+            {filteredEntries.length === 0 && (query || seriesList.length === 0) && (
               <div className="empty-state">
-                <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
-                  Add your first
-                </button>
+                {query ? (
+                  <p>No matches for &ldquo;{search}&rdquo;.</p>
+                ) : (
+                  <>
+                    <p>No {activeCat?.label.toLowerCase()} yet.</p>
+                    <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
+                      Add your first
+                    </button>
+                  </>
+                )}
               </div>
             )}
-            {(seriesFilter != null
+            {(seriesFilter != null || query
               ? filteredEntries.map(e => ({ type: 'solo', entry: e }))
               : groupEntries(filteredEntries, seriesList)
             ).map(item =>
