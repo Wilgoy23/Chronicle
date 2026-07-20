@@ -527,6 +527,41 @@ body {
 .view-btn.active { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
 .view-btn:hover:not(.active) { color: var(--text); }
 
+/* Sort control (icon + native select) */
+.sort-control {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 0.3rem;
+  padding: 0 0.55rem 0 0.5rem;
+  transition: border-color 0.15s ease;
+}
+.sort-control:hover { border-color: var(--border2); }
+.sort-control:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.sort-icon {
+  align-items: center;
+  color: var(--text-mute);
+  display: flex;
+  flex-shrink: 0;
+}
+.sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.785rem;
+  font-weight: 500;
+  outline: none;
+  padding: 0.36rem 0.1rem 0.36rem 0;
+}
+.sort-select:hover { color: var(--text); }
+.sort-select option { background: var(--bg3); color: var(--text); }
+
 /* Ghost button (Search) */
 .add-btn {
   align-items: center;
@@ -2520,7 +2555,8 @@ body {
    ══════════════════════════════════════════════════════════ */
 @media (max-width: 480px) {
   /* Hide view toggle — default to grid */
-  .topbar-actions .view-toggle { display: none; }
+  .topbar-actions .view-toggle,
+  .topbar-actions .sort-control { display: none; }
 
   /* Tighter card grid */
   .entries-grid {

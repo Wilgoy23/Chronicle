@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-19
+> Last updated: 2026-07-20
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -18,7 +18,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | # | Item | Milestone | Priority | Status |
 |---|------|-----------|----------|--------|
 | 1.1 | Library search | M1 | P0 | ✅ |
-| 1.2 | Sorting | M1 | P0 | ⬜ |
+| 1.2 | Sorting | M1 | P0 | ✅ |
 | 1.3 | Delete undo | M1 | P0 | ⬜ |
 | 1.4 | Keyboard shortcuts & Esc-to-close | M1 | P1 | ⬜ |
 | 1.5 | Rating slider hover fix | M1 | P1 | ⬜ |
@@ -67,16 +67,23 @@ There is currently no way to search entries you already own — `SearchModal` on
 - Styling added to `src/index.css` (`.filter-search*`), accent-aware focus state, width expands on focus.
 - The `searchRef` is in place for the Ctrl+K/Ctrl+F focus shortcut in task 1.4.
 
-### 1.2 Sorting — ⬜ Not started `P0`
+### 1.2 Sorting — ✅ Done `P0`
 
 Entries are always returned `ORDER BY id DESC` (`electron/db.js` → `getEntries`).
 
 **Requirements**
-- [ ] Sort dropdown next to the view toggle: Recently added (default) · Title A–Z · Rating (high→low) · Date read/watched
-- [ ] Sort preference persists per category (settings or localStorage)
-- [ ] Series groups sort by their best-matching entry; solo entries interleave sensibly or groups stay pinned first (decide during implementation)
+- [x] Sort dropdown next to the view toggle: Recently added (default) · Title A–Z · Rating (high→low) · Date read/watched
+- [x] Sort preference persists per category (settings or localStorage) — *localStorage `chronicle.sort`, keyed by category id*
+- [x] Series groups sort by their best-matching entry; solo entries interleave sensibly or groups stay pinned first — *decided: groups stay pinned first, ordered by their best-matching entry*
 
-**Acceptance:** each sort option visibly reorders the grid; choice survives app restart.
+**Acceptance:** each sort option visibly reorders the grid; choice survives app restart. ✅
+
+**Implementation notes:**
+- `SORT_OPTIONS` + `sortEntries()` helper in `src/App.jsx`; `recent` preserves DB order (id DESC), others return a sorted copy.
+- Ratings sort nulls-last; date sort uses `date_read` falling back to `created_at`, newest first.
+- `filteredEntries` is sorted *before* grouping, so series groups order by their best-matching (first, post-sort) entry and entries within a group are sorted too; groups remain pinned above solo cards (existing layout).
+- Sort control is a styled native `<select>` in the topbar (`.sort-control`), shown only in grid view since the timeline sorts by date internally; hidden on the narrowest breakpoint alongside the view toggle.
+- Preference persists per category via `loadSort()` / `changeSort()` in localStorage.
 
 ### 1.3 Delete undo — ⬜ Not started `P0`
 
@@ -288,3 +295,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 |------|--------|
 | 2026-07-19 | Initial PRD created from UX/feature review |
 | 2026-07-19 | 1.1 Library search implemented (title/series/notes filter in the filter strip) |
+| 2026-07-20 | 1.2 Sorting implemented (recent / title / rating / date, persisted per category) |

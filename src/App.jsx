@@ -31,12 +31,32 @@ const ICONS = {
   trash:    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
   bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
 }
 
 export const STATUS_LABELS = {
   completed:   'Completed',
   in_progress: 'In Progress',
   planned:     'Planned',
+}
+
+export const SORT_OPTIONS = [
+  { key: 'recent', label: 'Recently added' },
+  { key: 'title',  label: 'Title A–Z' },
+  { key: 'rating', label: 'Rating' },
+  { key: 'date',   label: 'Date' },
+]
+
+function entryDate(e) {
+  return e.date_read || e.created_at?.slice(0, 10) || ''
+}
+
+// 'recent' preserves DB order (id DESC). Others return a sorted copy.
+function sortEntries(entries, sort) {
+  if (sort === 'title')  return [...entries].sort((a, b) => a.title.localeCompare(b.title))
+  if (sort === 'rating') return [...entries].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1))
+  if (sort === 'date')   return [...entries].sort((a, b) => entryDate(b).localeCompare(entryDate(a)))
+  return entries
 }
 
 // Series groups always appear before solo entries.
@@ -79,6 +99,7 @@ export default function App() {
   const [seriesFilter, setSeriesFilter] = useState(null) // series_id | null
   const [search, setSearch]           = useState('')
   const searchRef                     = useRef(null)
+  const [sort, setSort]               = useState('recent')
   const [pendingSeriesId, setPendingSeriesId] = useState(null)
   const [newSeriesName, setNewSeriesName]     = useState('')
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
@@ -134,13 +155,16 @@ export default function App() {
   }
 
   const query = search.trim().toLowerCase()
-  const filteredEntries = entries
-    .filter(e => statusFilter === 'all' || e.status === statusFilter)
-    .filter(e => seriesFilter == null || e.series_id === seriesFilter)
-    .filter(e => !query ||
-      e.title.toLowerCase().includes(query) ||
-      (e.series && e.series.toLowerCase().includes(query)) ||
-      (e.notes && e.notes.toLowerCase().includes(query)))
+  const filteredEntries = sortEntries(
+    entries
+      .filter(e => statusFilter === 'all' || e.status === statusFilter)
+      .filter(e => seriesFilter == null || e.series_id === seriesFilter)
+      .filter(e => !query ||
+        e.title.toLowerCase().includes(query) ||
+        (e.series && e.series.toLowerCase().includes(query)) ||
+        (e.notes && e.notes.toLowerCase().includes(query))),
+    sort,
+  )
 
   const visibleCats     = categories.filter(c => c.enabled)
   const activeCat       = visibleCats.find(c => c.id === category) ?? visibleCats[0]
@@ -149,6 +173,7 @@ export default function App() {
     if (activeCat) {
       setSeriesFilter(null)
       setSearch('')
+      setSort(loadSort(activeCat.id))
       setShowNewSeriesInput(false)
       setNewSeriesName('')
       window.db.getEntries(activeCat.id).then(setEntries)
@@ -158,6 +183,23 @@ export default function App() {
 
   function refreshSeriesList() {
     window.db.getSeries(activeCat.id).then(setSeriesList)
+  }
+
+  // Sort preference persists per category in localStorage.
+  function loadSort(catId) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('chronicle.sort') || '{}')
+      return saved[catId] || 'recent'
+    } catch { return 'recent' }
+  }
+
+  function changeSort(key) {
+    setSort(key)
+    try {
+      const saved = JSON.parse(localStorage.getItem('chronicle.sort') || '{}')
+      saved[activeCat.id] = key
+      localStorage.setItem('chronicle.sort', JSON.stringify(saved))
+    } catch { /* localStorage unavailable — in-memory sort still applies */ }
   }
 
   function handleCategoryClick(catId) {
@@ -402,6 +444,21 @@ export default function App() {
                   <span className="bell-badge">{unseenReleases > 9 ? '9+' : unseenReleases}</span>
                 )}
               </button>
+              {view === 'grid' && (
+                <div className="sort-control" title="Sort">
+                  <span className="sort-icon">{ICONS.sort}</span>
+                  <select
+                    className="sort-select"
+                    value={sort}
+                    onChange={e => changeSort(e.target.value)}
+                    aria-label="Sort entries"
+                  >
+                    {SORT_OPTIONS.map(o => (
+                      <option key={o.key} value={o.key}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="view-toggle">
                 <button
                   className={`view-btn ${view === 'grid' ? 'active' : ''}`}
