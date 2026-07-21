@@ -185,6 +185,30 @@ export default function App() {
     }
   }, [activeCat?.id])
 
+  // Global keyboard shortcuts: Esc closes the topmost overlay; Ctrl/Cmd+N adds; Ctrl/Cmd+K|F focuses search.
+  useEffect(() => {
+    const anyOverlayOpen = searchOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        if (seriesToDelete)  { setSeriesToDelete(null); return }
+        if (editingEntry)    { setEditingEntry(null); return }
+        if (manualOpen)      { setManualOpen(false); setPendingSeriesId(null); return }
+        if (searchOpen)      { setSearchOpen(false); setPendingSeriesId(null); return }
+        if (releasesOpen)    { setReleasesOpen(false); return }
+        return
+      }
+      if (!(e.ctrlKey || e.metaKey)) return
+      const key = e.key.toLowerCase()
+      if (key === 'n' && page === 'collection' && !anyOverlayOpen) {
+        e.preventDefault(); openAdd()
+      } else if ((key === 'k' || key === 'f') && page === 'collection' && !anyOverlayOpen) {
+        e.preventDefault(); searchRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [searchOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, page])
+
   function refreshSeriesList() {
     window.db.getSeries(activeCat.id).then(setSeriesList)
   }

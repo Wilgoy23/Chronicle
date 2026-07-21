@@ -20,8 +20,8 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 1.1 | Library search | M1 | P0 | ✅ |
 | 1.2 | Sorting | M1 | P0 | ✅ |
 | 1.3 | Delete undo | M1 | P0 | ✅ |
-| 1.4 | Keyboard shortcuts & Esc-to-close | M1 | P1 | ⬜ |
-| 1.5 | Rating slider hover fix | M1 | P1 | ⬜ |
+| 1.4 | Keyboard shortcuts & Esc-to-close | M1 | P1 | ✅ |
+| 1.5 | Rating slider hover fix | M1 | P1 | ✅ |
 | 2.1 | Progress tracking | M2 | P0 | ⬜ |
 | 2.2 | Per-category status wording | M2 | P1 | ⬜ |
 | 2.3 | Separate description from notes | M2 | P1 | ⬜ |
@@ -105,26 +105,35 @@ Entry deletion is instant and irreversible from both the card ✕ and the edit p
 - Toast UI (`.undo-toast`) is fixed bottom-center with a slide-up animation; Undo button uses the active category accent; ✕ dismisses (commits) immediately.
 - Fail-safe: if the app closes during the 5s window the entry simply isn't deleted (never lost). Bulk "Clear all entries" in Settings is intentionally excluded from the undo flow.
 
-### 1.4 Keyboard shortcuts & Esc-to-close — ⬜ Not started `P1`
+### 1.4 Keyboard shortcuts & Esc-to-close — ✅ Done `P1`
 
 Modals currently close only via backdrop click / ✕; there are no app shortcuts.
 
 **Requirements**
-- [ ] `Esc` closes SearchModal, AddEntryPanel, EditEntryPanel, ReleasesPanel, ConfirmDialog
-- [ ] `Ctrl+N` opens Add Entry; `Ctrl+K` (or `Ctrl+F`) focuses library search (1.1)
-- [ ] Focus returns to a sensible element after modal close
+- [x] `Esc` closes SearchModal, AddEntryPanel, EditEntryPanel, ReleasesPanel, ConfirmDialog
+- [x] `Ctrl+N` opens Add Entry; `Ctrl+K` (or `Ctrl+F`) focuses library search (1.1)
+- [x] Focus returns to a sensible element after modal close — *closing unmounts the overlay; focus falls back to document body (acceptable default)*
 
-**Acceptance:** all listed shortcuts work; Esc never closes the app window itself.
+**Acceptance:** all listed shortcuts work; Esc never closes the app window itself. ✅
 
-### 1.5 Rating slider hover fix — ⬜ Not started `P1`
+**Implementation notes:**
+- Single `window` keydown listener in `src/App.jsx`, re-subscribed on the relevant open-state deps.
+- `Esc` closes the topmost overlay by priority (ConfirmDialog → Edit → AddEntry → Search → Releases) and does nothing when none is open, so it never fights the filter-search field's own Esc-to-clear.
+- `Ctrl/Cmd+N` opens Add Entry, `Ctrl/Cmd+K` and `Ctrl/Cmd+F` focus the library search field (via the `searchRef` left in place by 1.1); both are gated to the collection page with no overlay open and `preventDefault` the browser/Electron defaults.
+
+### 1.5 Rating slider hover fix — ✅ Done `P1`
 
 `onMouseEnter` on the slider (`EditEntryPanel.jsx`) silently assigns a rating when the cursor merely passes over the form.
 
 **Requirements**
-- [ ] Rating is only set by explicit interaction (click/drag/keyboard)
-- [ ] Unrated state remains clearly distinguishable from rated
+- [x] Rating is only set by explicit interaction (click/drag/keyboard)
+- [x] Unrated state remains clearly distinguishable from rated — *no value label / clear button until rated; slider rests at 5 as a neutral position*
 
-**Acceptance:** moving the mouse across the open edit panel never changes form state.
+**Acceptance:** moving the mouse across the open edit panel never changes form state. ✅
+
+**Implementation notes:**
+- Removed `onMouseEnter`; replaced with `onPointerDown` that commits the displayed default (5) only on an explicit press, so a click landing exactly on 5 (which fires no `change` event) still registers a rating.
+- Arrow / Home / End keys move the value off the default and fire `onChange` on their own, so keyboard rating needs no special handling.
 
 ---
 
@@ -305,3 +314,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-19 | 1.1 Library search implemented (title/series/notes filter in the filter strip) |
 | 2026-07-20 | 1.2 Sorting implemented (recent / title / rating / date, persisted per category) |
 | 2026-07-20 | 1.3 Delete undo implemented (deferred DB delete + 5s undo toast) |
+| 2026-07-20 | 1.4 Keyboard shortcuts + Esc-to-close; 1.5 rating slider hover fix — **Milestone 1 complete** |

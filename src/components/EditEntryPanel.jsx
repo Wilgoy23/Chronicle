@@ -135,7 +135,10 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
                   min={1} max={10} step={1}
                   value={form.rating !== '' ? form.rating : 5}
                   onChange={e => set('rating', e.target.value)}
-                  onMouseEnter={e => { if (form.rating === '') set('rating', e.target.value) }}
+                  // Commit the displayed value on explicit press, so a click landing
+                  // exactly on the default (which fires no change event) still rates.
+                  // Arrow/Home/End keys change the value and fire onChange on their own.
+                  onPointerDown={() => { if (form.rating === '') set('rating', '5') }}
                 />
                 <span className="edit-slider-bound">10</span>
                 {form.rating !== '' && (
