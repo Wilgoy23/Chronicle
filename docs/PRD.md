@@ -19,7 +19,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 |---|------|-----------|----------|--------|
 | 1.1 | Library search | M1 | P0 | ✅ |
 | 1.2 | Sorting | M1 | P0 | ✅ |
-| 1.3 | Delete undo | M1 | P0 | ⬜ |
+| 1.3 | Delete undo | M1 | P0 | ✅ |
 | 1.4 | Keyboard shortcuts & Esc-to-close | M1 | P1 | ⬜ |
 | 1.5 | Rating slider hover fix | M1 | P1 | ⬜ |
 | 2.1 | Progress tracking | M2 | P0 | ⬜ |
@@ -85,17 +85,25 @@ Entries are always returned `ORDER BY id DESC` (`electron/db.js` → `getEntries
 - Sort control is a styled native `<select>` in the topbar (`.sort-control`), shown only in grid view since the timeline sorts by date internally; hidden on the narrowest breakpoint alongside the view toggle.
 - Preference persists per category via `loadSort()` / `changeSort()` in localStorage.
 
-### 1.3 Delete undo — ⬜ Not started `P0`
+### 1.3 Delete undo — ✅ Done `P0`
 
 Entry deletion is instant and irreversible from both the card ✕ and the edit panel, while series deletion already gets a confirm dialog. Prefer undo over more confirm dialogs.
 
 **Requirements**
-- [ ] Deleting an entry shows a toast: "Deleted *Title* — Undo" (≈5s)
-- [ ] Undo restores the entry with all fields (including series link, source linkage)
-- [ ] Actual DB delete is deferred until toast expires, or re-insert on undo — either strategy is acceptable if source_id/series survive
-- [ ] Edit-panel Delete uses the same flow
+- [x] Deleting an entry shows a toast: "Deleted *Title* — Undo" (≈5s)
+- [x] Undo restores the entry with all fields (including series link, source linkage)
+- [x] Actual DB delete is deferred until toast expires — *chosen strategy: DB row untouched until commit, so the same id/series/source survive undo*
+- [x] Edit-panel Delete uses the same flow
 
-**Acceptance:** delete → undo round-trips an entry with no data loss.
+**Acceptance:** delete → undo round-trips an entry with no data loss. ✅
+
+**Implementation notes:**
+- Deferred-delete flow in `src/App.jsx`: `handleDelete` removes the entry from UI state and starts a 5s timer; `flushPendingDelete` commits the DB delete on expiry; `undoDelete` splices the entry back at its original index and cancels the timer.
+- The DB row is never touched until commit, so undo restores the exact record (id, `series_id`, `source`/`source_id`) — no re-insert / id change.
+- One undo in flight at a time: a second delete (or a category switch) commits the previous pending delete first, so no deletes are silently lost.
+- `EditEntryPanel` no longer deletes directly — it signals the parent and closes, routing through the same undo flow. Card ✕, timeline, and series-group deletes already funnelled through `onDelete`.
+- Toast UI (`.undo-toast`) is fixed bottom-center with a slide-up animation; Undo button uses the active category accent; ✕ dismisses (commits) immediately.
+- Fail-safe: if the app closes during the 5s window the entry simply isn't deleted (never lost). Bulk "Clear all entries" in Settings is intentionally excluded from the undo flow.
 
 ### 1.4 Keyboard shortcuts & Esc-to-close — ⬜ Not started `P1`
 
@@ -296,3 +304,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-19 | Initial PRD created from UX/feature review |
 | 2026-07-19 | 1.1 Library search implemented (title/series/notes filter in the filter strip) |
 | 2026-07-20 | 1.2 Sorting implemented (recent / title / rating / date, persisted per category) |
+| 2026-07-20 | 1.3 Delete undo implemented (deferred DB delete + 5s undo toast) |

@@ -108,6 +108,9 @@ export default function App() {
   const [releases, setReleases]       = useState([])
   const [unseenReleases, setUnseen]   = useState(0)
   const [releasesOpen, setReleasesOpen] = useState(false)
+  const [deleteToast, setDeleteToast] = useState(null)  // { title } while an undo is available
+  const pendingDeleteRef              = useRef(null)     // { entry, index } awaiting commit
+  const deleteTimerRef                = useRef(null)
 
   useEffect(() => {
     window.settings.get().then(s => {
@@ -171,6 +174,7 @@ export default function App() {
 
   useEffect(() => {
     if (activeCat) {
+      flushPendingDelete() // don't carry an undo across category switches
       setSeriesFilter(null)
       setSearch('')
       setSort(loadSort(activeCat.id))
@@ -224,9 +228,42 @@ export default function App() {
     refreshSeriesList()
   }
 
-  async function handleDelete(id) {
-    await window.db.deleteEntry(id)
+  // Deferred delete: remove from the UI now, commit to the DB when the toast expires.
+  // Undo restores the row untouched (same id, series link, source linkage).
+  function handleDelete(id) {
+    flushPendingDelete() // only one undo in flight at a time
+    const index = entries.findIndex(e => e.id === id)
+    if (index === -1) return
+    const entry = entries[index]
+    pendingDeleteRef.current = { entry, index }
     setEntries(prev => prev.filter(e => e.id !== id))
+    setDeleteToast({ title: entry.title })
+    deleteTimerRef.current = setTimeout(flushPendingDelete, 5000)
+  }
+
+  function flushPendingDelete() {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null }
+    const pending = pendingDeleteRef.current
+    if (pending) {
+      window.db.deleteEntry(pending.entry.id)
+      pendingDeleteRef.current = null
+    }
+    setDeleteToast(null)
+  }
+
+  function undoDelete() {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null }
+    const pending = pendingDeleteRef.current
+    if (pending) {
+      const { entry, index } = pending
+      setEntries(prev => {
+        const next = [...prev]
+        next.splice(Math.min(index, next.length), 0, entry)
+        return next
+      })
+      pendingDeleteRef.current = null
+    }
+    setDeleteToast(null)
   }
 
   function handleUpdate(updated) {
@@ -634,6 +671,16 @@ export default function App() {
         onConfirm={confirmDeleteSeries}
         onCancel={() => setSeriesToDelete(null)}
       />
+
+      {deleteToast && (
+        <div className="undo-toast" role="status">
+          <span className="undo-toast-msg">
+            Deleted <strong>{deleteToast.title}</strong>
+          </span>
+          <button className="undo-toast-btn" onClick={undoDelete}>Undo</button>
+          <button className="undo-toast-close" onClick={flushPendingDelete} aria-label="Dismiss">✕</button>
+        </div>
+      )}
     </div>
   )
 }

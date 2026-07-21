@@ -47,8 +47,8 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
     onClose()
   }
 
-  async function handleDelete() {
-    await window.db.deleteEntry(entry.id)
+  function handleDelete() {
+    // Defer the DB delete to the parent's undo flow — just signal + close here.
     onDelete(entry.id)
     onClose()
   }
