@@ -28,6 +28,8 @@ function initDb(dbPath) {
   // Progress tracking — units are per-category (pages / episodes / hours …)
   try { db.exec('ALTER TABLE entries ADD COLUMN progress INTEGER DEFAULT 0') } catch {}
   try { db.exec('ALTER TABLE entries ADD COLUMN progress_total INTEGER') } catch {}
+  // API synopsis, kept separate from the user's personal notes
+  try { db.exec('ALTER TABLE entries ADD COLUMN description TEXT') } catch {}
 
   // Series table — standalone, first-class records
   db.exec(`

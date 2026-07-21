@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { STATUS_LABELS } from '../App'
+import { STATUS_LABELS, categoryVerbs } from '../App'
 import SeriesSelect from './SeriesSelect'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -104,7 +104,7 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
           </label>
 
           <label>
-            Date Read
+            Date {categoryVerbs(category).past}
             <input
               type="date"
               value={form.date_read}

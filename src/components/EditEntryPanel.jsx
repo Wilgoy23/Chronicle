@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_CATEGORIES, STATUS_LABELS, progressUnit } from '../App'
+import { DEFAULT_CATEGORIES, STATUS_LABELS, progressUnit, categoryVerbs } from '../App'
 import SeriesSelect from './SeriesSelect'
 import Cover from './Cover'
 
@@ -183,7 +183,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
 
             <div className="edit-two-col">
               <label className="edit-label">
-                Date Read
+                Date {categoryVerbs(entry.category).past}
                 <input
                   type="date"
                   className="edit-input"

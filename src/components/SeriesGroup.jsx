@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import EntryCard from './EntryCard'
 import Cover from './Cover'
-import { STATUS_LABELS } from '../App'
+import { STATUS_LABELS, categoryVerbs } from '../App'
 
 export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onIncrement, onDropEntry, onDeleteSeries }) {
   const [expanded, setExpanded] = useState(false)
@@ -32,8 +32,14 @@ export default function SeriesGroup({ seriesId, name, entries, color, onDelete, 
     acc[e.status] = (acc[e.status] ?? 0) + 1
     return acc
   }, {})
+  const cat = entries[0]?.category
   const summary = Object.entries(statusCounts)
-    .map(([s, n]) => `${n} ${STATUS_LABELS[s]?.toLowerCase() ?? s}`)
+    .map(([s, n]) => {
+      const label = s === 'in_progress'
+        ? categoryVerbs(cat).active.toLowerCase()
+        : STATUS_LABELS[s]?.toLowerCase() ?? s
+      return `${n} ${label}`
+    })
     .join(' · ')
 
   const coverUrls = entries.map(e => e.cover_url).filter(Boolean)

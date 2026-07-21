@@ -1,4 +1,4 @@
-import { STATUS_LABELS } from '../App'
+import { STATUS_LABELS, categoryVerbs } from '../App'
 import Cover from './Cover'
 
 const STATUS_COLORS = {
@@ -7,10 +7,15 @@ const STATUS_COLORS = {
   planned:     '#94a3b8',
 }
 
+// 'in_progress' wording is per-category (Reading / Watching / Playing).
 const STATUS_SHORT = {
   completed:   'Done',
-  in_progress: 'Reading',
   planned:     'Planned',
+}
+
+function shortStatus(entry) {
+  if (entry.status === 'in_progress') return categoryVerbs(entry.category).active
+  return STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]
 }
 
 export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement }) {
@@ -39,7 +44,7 @@ export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement 
         <div className="cover-status">
           <span className="cover-status-dot" style={{ background: STATUS_COLORS[entry.status] }} />
           <span className="cover-status-label" style={{ color: STATUS_COLORS[entry.status] }}>
-            {STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]}
+            {shortStatus(entry)}
           </span>
         </div>
         {/* Rating badge — hidden for planned entries (not consumed yet) */}

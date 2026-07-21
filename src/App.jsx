@@ -54,6 +54,20 @@ export function progressUnit(category) {
   return PROGRESS_UNITS[category] ?? 'units'
 }
 
+// Per-category verbs: `active` for in-progress wording, `past` for the "Date …" label.
+const CATEGORY_VERBS = {
+  book:  { active: 'Reading',  past: 'Read' },
+  manga: { active: 'Reading',  past: 'Read' },
+  anime: { active: 'Watching', past: 'Watched' },
+  movie: { active: 'Watching', past: 'Watched' },
+  tv:    { active: 'Watching', past: 'Watched' },
+  game:  { active: 'Playing',  past: 'Played' },
+}
+
+export function categoryVerbs(category) {
+  return CATEGORY_VERBS[category] ?? { active: 'In Progress', past: 'Finished' }
+}
+
 export const SORT_OPTIONS = [
   { key: 'recent', label: 'Recently added' },
   { key: 'title',  label: 'Title A–Z' },

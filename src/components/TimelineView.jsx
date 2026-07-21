@@ -1,4 +1,4 @@
-import { STATUS_LABELS } from '../App'
+import { STATUS_LABELS, categoryVerbs } from '../App'
 import Cover from './Cover'
 
 const STATUS_COLORS = {
@@ -89,7 +89,9 @@ function TimelineCard({ entry, color, onDelete, onEdit }) {
         {entry.series && <span className="tl-series">{entry.series}</span>}
         <div className="tl-meta">
           <span className="tl-status" style={{ color: STATUS_COLORS[entry.status] }}>
-            ● {STATUS_LABELS[entry.status] ?? entry.status}
+            ● {entry.status === 'in_progress'
+                ? categoryVerbs(entry.category).active
+                : STATUS_LABELS[entry.status] ?? entry.status}
           </span>
           {entry.status === 'in_progress' && entry.progress_total > 0 && (
             <span className="tl-progress">
