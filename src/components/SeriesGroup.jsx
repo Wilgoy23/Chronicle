@@ -3,7 +3,7 @@ import EntryCard from './EntryCard'
 import Cover from './Cover'
 import { STATUS_LABELS } from '../App'
 
-export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onDropEntry, onDeleteSeries }) {
+export default function SeriesGroup({ seriesId, name, entries, color, onDelete, onUpdate, onEdit, onIncrement, onDropEntry, onDeleteSeries }) {
   const [expanded, setExpanded] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
@@ -88,6 +88,7 @@ export default function SeriesGroup({ seriesId, name, entries, color, onDelete, 
               color={color}
               onDelete={onDelete}
               onEdit={onEdit}
+              onIncrement={onIncrement}
             />
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_CATEGORIES, STATUS_LABELS } from '../App'
+import { DEFAULT_CATEGORIES, STATUS_LABELS, progressUnit } from '../App'
 import SeriesSelect from './SeriesSelect'
 import Cover from './Cover'
 
@@ -18,6 +18,8 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         cover_url: entry.cover_url ?? '',
         series_id: entry.series_id ?? null,
         date_read: entry.date_read ?? '',
+        progress:       entry.progress != null ? String(entry.progress) : '',
+        progress_total: entry.progress_total != null ? String(entry.progress_total) : '',
       })
       setTimeout(() => titleRef.current?.focus(), 50)
     }
@@ -41,6 +43,8 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
       notes:     form.notes.trim(),
       series_id: form.series_id ?? null,
       date_read: form.date_read || null,
+      progress:       form.progress !== '' ? Number(form.progress) : 0,
+      progress_total: form.progress_total !== '' ? Number(form.progress_total) : null,
     })
     setSaving(false)
     onUpdate(updated)
@@ -121,6 +125,32 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
                 ))}
               </div>
             </div>
+
+            {form.status === 'in_progress' && (
+              <div className="edit-label">
+                Progress
+                <div className="edit-progress-row">
+                  <input
+                    type="number"
+                    min={0}
+                    className="edit-input edit-progress-input"
+                    value={form.progress}
+                    onChange={e => set('progress', e.target.value)}
+                    placeholder="0"
+                  />
+                  <span className="edit-progress-sep">/</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="edit-input edit-progress-input"
+                    value={form.progress_total}
+                    onChange={e => set('progress_total', e.target.value)}
+                    placeholder="total"
+                  />
+                  <span className="edit-progress-unit">{progressUnit(entry.category)}</span>
+                </div>
+              </div>
+            )}
 
             <div className="edit-label">
               Rating

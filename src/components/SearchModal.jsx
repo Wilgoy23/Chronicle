@@ -99,6 +99,9 @@ export default function SearchModal({
       date_read: today(),
       source:    SOURCE_KEYS[category] ?? null,
       source_id: r.id ?? null,
+      // Episode/chapter counts from the API seed the progress total.
+      progress:       0,
+      progress_total: r.episodes ?? null,
     })
     if (entry?.error === 'DUPLICATE') return // already in library, button will show "In Library"
     setAddedIds(prev => new Set([...prev, r.id]))

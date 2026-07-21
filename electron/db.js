@@ -25,6 +25,9 @@ function initDb(dbPath) {
   // External source linkage — needed to look up new releases in a franchise
   try { db.exec('ALTER TABLE entries ADD COLUMN source TEXT') } catch {}
   try { db.exec('ALTER TABLE entries ADD COLUMN source_id TEXT') } catch {}
+  // Progress tracking — units are per-category (pages / episodes / hours …)
+  try { db.exec('ALTER TABLE entries ADD COLUMN progress INTEGER DEFAULT 0') } catch {}
+  try { db.exec('ALTER TABLE entries ADD COLUMN progress_total INTEGER') } catch {}
 
   // Series table — standalone, first-class records
   db.exec(`
@@ -86,7 +89,8 @@ function initDb(dbPath) {
 // ── Shared SELECT fragment ───────────────────────────────────────
 const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
-         e.date_read, e.created_at, e.series_id, e.source, e.source_id, s.name AS series
+         e.date_read, e.created_at, e.series_id, e.source, e.source_id,
+         e.progress, e.progress_total, s.name AS series
   FROM entries e
   LEFT JOIN series s ON e.series_id = s.id
 `
@@ -97,14 +101,14 @@ function getEntries(category) {
     : db.prepare(`${ENTRY_SELECT} ORDER BY e.id DESC`).all()
 }
 
-function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id }) {
+function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total }) {
   // Duplicate guard — same title in same category
   const dup = db.prepare(`${ENTRY_SELECT} WHERE e.category = ? AND LOWER(e.title) = LOWER(?)`).get(category, title)
   if (dup) return { error: 'DUPLICATE', existing: dup }
 
   const result = db.prepare(`
-    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     category,
     title,
@@ -116,16 +120,24 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
     date_read ?? null,
     source    ?? null,
     source_id != null ? String(source_id) : null,
+    progress  ?? 0,
+    progress_total ?? null,
   )
 
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid)
 }
 
-function updateEntry({ id, title, status, rating, notes, series_id, date_read }) {
+function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total }) {
+  // Preserve progress when a caller omits it (e.g. drag-to-series only touches series_id).
+  const cur = db.prepare('SELECT progress, progress_total FROM entries WHERE id = ?').get(id) || {}
+  const nextProgress = progress       === undefined ? (cur.progress ?? 0)          : (progress ?? 0)
+  const nextTotal    = progress_total === undefined ? (cur.progress_total ?? null) : (progress_total ?? null)
   db.prepare(`
-    UPDATE entries SET title = ?, status = ?, rating = ?, notes = ?, series_id = ?, date_read = ?
+    UPDATE entries SET title = ?, status = ?, rating = ?, notes = ?, series_id = ?, date_read = ?,
+      progress = ?, progress_total = ?
     WHERE id = ?
-  `).run(title, status, rating ?? null, notes ?? '', series_id ?? null, date_read ?? null, id)
+  `).run(title, status, rating ?? null, notes ?? '', series_id ?? null, date_read ?? null,
+         nextProgress, nextTotal, id)
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(id)
 }
 

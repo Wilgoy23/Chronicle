@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-20
+> Last updated: 2026-07-21
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -22,7 +22,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 1.3 | Delete undo | M1 | P0 | ✅ |
 | 1.4 | Keyboard shortcuts & Esc-to-close | M1 | P1 | ✅ |
 | 1.5 | Rating slider hover fix | M1 | P1 | ✅ |
-| 2.1 | Progress tracking | M2 | P0 | ⬜ |
+| 2.1 | Progress tracking | M2 | P0 | ✅ |
 | 2.2 | Per-category status wording | M2 | P1 | ⬜ |
 | 2.3 | Separate description from notes | M2 | P1 | ⬜ |
 | 3.1 | Stats / Insights page | M3 | P1 | ⬜ |
@@ -141,19 +141,30 @@ Modals currently close only via backdrop click / ✕; there are no app shortcuts
 
 *Goal: make "In Progress" genuinely useful and each category feel native.*
 
-### 2.1 Progress tracking — ⬜ Not started `P0` ⭐ headline feature
+### 2.1 Progress tracking — ✅ Done `P0` ⭐ headline feature
 
 **Requirements**
-- [ ] New columns: `progress` (int), `progress_total` (int, nullable) on `entries`
-- [ ] Auto-fill `progress_total` from API where available (AniList episode counts are already returned and currently discarded)
-- [ ] Edit panel: progress fields shown for in-progress entries, unit labeled per category (episodes / pages / hours)
-- [ ] Card UI: thin progress bar + "7 / 24" label on in-progress entries
-- [ ] Quick "+1" increment on the card (hover action) without opening the edit panel
-- [ ] Reaching total prompts (or auto-suggests) marking as Completed
+- [x] New columns: `progress` (int), `progress_total` (int, nullable) on `entries`
+- [x] Auto-fill `progress_total` from API where available (AniList episode counts are already returned and currently discarded)
+- [x] Edit panel: progress fields shown for in-progress entries, unit labeled per category (episodes / pages / hours)
+- [x] Card UI: thin progress bar + "7 / 24" label on in-progress entries
+- [x] Quick "+1" increment on the card (hover action) without opening the edit panel
+- [x] Reaching total prompts (or auto-suggests) marking as Completed — *chosen: auto-completes and stamps today's date if none set*
 
-**Acceptance:** an in-progress anime shows episode progress on its card and can be incremented in one click.
+**Acceptance:** an in-progress anime shows episode progress on its card and can be incremented in one click. ✅
 
 **Touches:** `electron/db.js` (migration + CRUD), `EntryCard.jsx`, `EditEntryPanel.jsx`, `SearchModal.jsx` / `electron/api.js` (capture totals).
+
+**Implementation notes:**
+- Migration adds `progress INTEGER DEFAULT 0` and `progress_total INTEGER`; both threaded through `ENTRY_SELECT`, `addEntry`, and `updateEntry`.
+- **`updateEntry` preserves progress when a caller omits it** (merges against the current row) so drag-to-series — which only sends `series_id` — never wipes progress. Covered by a unit test.
+- Progress UI is scoped to `status === 'in_progress' && progress_total > 0`, so movies (no episodic total) get no progress chrome unless a total is set manually. Units per category via `PROGRESS_UNITS`/`progressUnit()` in `App.jsx` (books→pages, anime/tv→episodes, game→hours, manga→chapters).
+- Card: thin accent bar + "7 / 24" label pinned to the cover bottom; "+1" button reveals on hover (always visible on touch). Timeline card shows a read-only "7 / 24".
+- Quick +1 (`handleIncrement` in `App.jsx`) reuses `updateEntry`; reaching the total auto-flips status to Completed and stamps today's date when none was set.
+- Edit panel shows current / total number inputs with the category unit when status is In Progress.
+- AniList `episodes` seeds `progress_total` on search-add (`SearchModal.jsx`); other sources leave it null.
+
+**Verification:** `vite build` clean; `npm test` → 54/54 pass (4 new tests: add stores progress/total, defaults 0/null, update mutates, and update preserves progress on omit). GUI not driven (needs a display) — DB layer covered by tests, UI wiring is straightforward React.
 
 ### 2.2 Per-category status wording — ⬜ Not started `P1`
 
@@ -315,3 +326,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-20 | 1.2 Sorting implemented (recent / title / rating / date, persisted per category) |
 | 2026-07-20 | 1.3 Delete undo implemented (deferred DB delete + 5s undo toast) |
 | 2026-07-20 | 1.4 Keyboard shortcuts + Esc-to-close; 1.5 rating slider hover fix — **Milestone 1 complete** |
+| 2026-07-21 | 2.1 Progress tracking implemented (schema + card bar/+1 + edit fields + AniList auto-fill + auto-complete) |

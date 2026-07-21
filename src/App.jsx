@@ -40,6 +40,20 @@ export const STATUS_LABELS = {
   planned:     'Planned',
 }
 
+// Progress unit per category. Categories without an episodic/paginated unit
+// (e.g. movies) simply have no progress UI unless a total is set manually.
+export const PROGRESS_UNITS = {
+  book:  'pages',
+  anime: 'episodes',
+  game:  'hours',
+  manga: 'chapters',
+  tv:    'episodes',
+}
+
+export function progressUnit(category) {
+  return PROGRESS_UNITS[category] ?? 'units'
+}
+
 export const SORT_OPTIONS = [
   { key: 'recent', label: 'Recently added' },
   { key: 'title',  label: 'Title A–Z' },
@@ -293,6 +307,27 @@ export default function App() {
   function handleUpdate(updated) {
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
     refreshSeriesList()
+  }
+
+  // Quick +1 from a card. Reaching the total auto-completes the entry
+  // (and stamps today's date if none was set).
+  async function handleIncrement(entry) {
+    const total = entry.progress_total
+    const next  = total != null ? Math.min((entry.progress ?? 0) + 1, total) : (entry.progress ?? 0) + 1
+    if (next === (entry.progress ?? 0)) return
+    const done  = total != null && next >= total
+    const updated = await window.db.updateEntry({
+      id:        entry.id,
+      title:     entry.title,
+      status:    done ? 'completed' : entry.status,
+      rating:    entry.rating,
+      notes:     entry.notes,
+      series_id: entry.series_id,
+      date_read: done && !entry.date_read ? new Date().toISOString().slice(0, 10) : entry.date_read,
+      progress:  next,
+      progress_total: total,
+    })
+    setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
   }
 
   function handleEdit(entry) { setEditingEntry(entry) }
@@ -630,6 +665,7 @@ export default function App() {
                   color={activeCat?.color}
                   onDelete={handleDelete}
                   onEdit={handleEdit}
+                  onIncrement={handleIncrement}
                   onDropEntry={handleDropEntry}
                   onDeleteSeries={handleDeleteSeries}
                 />
@@ -640,6 +676,7 @@ export default function App() {
                   color={activeCat?.color}
                   onDelete={handleDelete}
                   onEdit={handleEdit}
+                  onIncrement={handleIncrement}
                 />
               )
             )}

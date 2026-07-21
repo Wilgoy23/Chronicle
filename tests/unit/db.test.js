@@ -134,6 +134,37 @@ describe('updateEntry', () => {
   })
 })
 
+describe('progress tracking', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('stores progress and progress_total on add', () => {
+    const entry = addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', progress: 5, progress_total: 220 })
+    expect(entry.progress).toBe(5)
+    expect(entry.progress_total).toBe(220)
+  })
+
+  it('defaults progress to 0 and progress_total to null when omitted', () => {
+    const entry = addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    expect(entry.progress).toBe(0)
+    expect(entry.progress_total).toBeNull()
+  })
+
+  it('updates progress and progress_total', () => {
+    const entry   = addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', progress: 5, progress_total: 220 })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: 'in_progress', progress: 6, progress_total: 220 })
+    expect(updated.progress).toBe(6)
+    expect(updated.progress_total).toBe(220)
+  })
+
+  it('preserves progress when a caller omits it (e.g. drag-to-series)', () => {
+    const entry = addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', progress: 42, progress_total: 220 })
+    // Simulate handleDropEntry, which only touches series_id and never sends progress.
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, series_id: null })
+    expect(updated.progress).toBe(42)
+    expect(updated.progress_total).toBe(220)
+  })
+})
+
 describe('deleteEntry', () => {
   beforeEach(() => initDb(':memory:'))
 

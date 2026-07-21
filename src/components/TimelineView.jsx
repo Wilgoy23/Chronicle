@@ -91,6 +91,11 @@ function TimelineCard({ entry, color, onDelete, onEdit }) {
           <span className="tl-status" style={{ color: STATUS_COLORS[entry.status] }}>
             ● {STATUS_LABELS[entry.status] ?? entry.status}
           </span>
+          {entry.status === 'in_progress' && entry.progress_total > 0 && (
+            <span className="tl-progress">
+              {Math.min(entry.progress ?? 0, entry.progress_total)} / {entry.progress_total}
+            </span>
+          )}
           {entry.rating && entry.status !== 'planned' && (
             <span className="tl-rating" style={{ '--accent': color }}>
               {entry.rating}/10

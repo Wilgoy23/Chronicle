@@ -13,11 +13,17 @@ const STATUS_SHORT = {
   planned:     'Planned',
 }
 
-export default function EntryCard({ entry, color, onDelete, onEdit }) {
+export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement }) {
   function handleDragStart(e) {
     e.dataTransfer.setData('text/plain', String(entry.id))
     e.dataTransfer.effectAllowed = 'move'
   }
+
+  // Progress UI only applies to in-progress entries that have a known total.
+  const total       = entry.progress_total
+  const showProgress = entry.status === 'in_progress' && total > 0
+  const progress    = Math.min(entry.progress ?? 0, total ?? 0)
+  const pct         = showProgress ? Math.round((progress / total) * 100) : 0
 
   return (
     <div
@@ -40,6 +46,23 @@ export default function EntryCard({ entry, color, onDelete, onEdit }) {
         {entry.rating && entry.status !== 'planned' && (
           <div className="cover-rating">
             {entry.rating}<span className="cover-rating-max">/10</span>
+          </div>
+        )}
+
+        {/* Progress bar + quick increment (in-progress with a known total) */}
+        {showProgress && (
+          <div className="cover-progress">
+            <div className="cover-progress-track">
+              <div className="cover-progress-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="cover-progress-row">
+              <span className="cover-progress-label">{progress} / {total}</span>
+              <button
+                className="cover-progress-inc"
+                onClick={e => { e.stopPropagation(); onIncrement?.(entry) }}
+                title="Log one more"
+              >+1</button>
+            </div>
           </div>
         )}
       </div>
