@@ -203,6 +203,13 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
               </label>
             </div>
 
+            {entry.description && (
+              <details className="edit-desc">
+                <summary className="edit-desc-summary">Synopsis</summary>
+                <p className="edit-desc-text">{entry.description}</p>
+              </details>
+            )}
+
             <label className="edit-label">
               Notes
               <textarea

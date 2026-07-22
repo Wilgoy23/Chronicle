@@ -88,7 +88,9 @@ export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement 
           <span className="card-series-tag">{entry.series}</span>
         )}
 
-        {entry.notes && <p className="card-notes">{entry.notes}</p>}
+        {(entry.notes || entry.description) && (
+          <p className="card-notes">{entry.notes || entry.description}</p>
+        )}
       </div>
     </div>
   )

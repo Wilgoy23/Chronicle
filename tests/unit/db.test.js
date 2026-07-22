@@ -165,6 +165,28 @@ describe('progress tracking', () => {
   })
 })
 
+describe('description (API synopsis, separate from notes)', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('stores description on add without touching notes', () => {
+    const entry = addEntry({ category: 'anime', title: 'Naruto', status: 'completed', description: 'A ninja story', notes: '' })
+    expect(entry.description).toBe('A ninja story')
+    expect(entry.notes).toBe('')
+  })
+
+  it('defaults description to null when omitted', () => {
+    const entry = addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    expect(entry.description).toBeNull()
+  })
+
+  it('preserves description across an update (edit form never sends it)', () => {
+    const entry   = addEntry({ category: 'anime', title: 'Naruto', status: 'completed', description: 'A ninja story' })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: 'completed', notes: 'loved it' })
+    expect(updated.description).toBe('A ninja story')
+    expect(updated.notes).toBe('loved it')
+  })
+})
+
 describe('deleteEntry', () => {
   beforeEach(() => initDb(':memory:'))
 

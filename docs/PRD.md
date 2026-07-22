@@ -23,8 +23,8 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 1.4 | Keyboard shortcuts & Esc-to-close | M1 | P1 | ✅ |
 | 1.5 | Rating slider hover fix | M1 | P1 | ✅ |
 | 2.1 | Progress tracking | M2 | P0 | ✅ |
-| 2.2 | Per-category status wording | M2 | P1 | ⬜ |
-| 2.3 | Separate description from notes | M2 | P1 | ⬜ |
+| 2.2 | Per-category status wording | M2 | P1 | ✅ |
+| 2.3 | Separate description from notes | M2 | P1 | ✅ |
 | 3.1 | Stats / Insights page | M3 | P1 | ⬜ |
 | 3.2 | Export & backup | M3 | P0 | ⬜ |
 | 3.3 | Import (CSV/JSON) | M3 | P2 | ⬜ |
@@ -166,28 +166,38 @@ Modals currently close only via backdrop click / ✕; there are no app shortcuts
 
 **Verification:** `vite build` clean; `npm test` → 54/54 pass (4 new tests: add stores progress/total, defaults 0/null, update mutates, and update preserves progress on omit). GUI not driven (needs a display) — DB layer covered by tests, UI wiring is straightforward React.
 
-### 2.2 Per-category status wording — ⬜ Not started `P1`
+### 2.2 Per-category status wording — ✅ Done `P1`
 
 "Reading" (`STATUS_SHORT` in `EntryCard.jsx`) and "Date Read" (edit panel) appear on movies and games.
 
 **Requirements**
-- [ ] Per-category verb map: book *Reading/Read*, anime & movie/TV *Watching/Watched*, game *Playing/Played*
-- [ ] Applies to: card status chip, timeline status, edit panel date label, series group summary
-- [ ] Falls back gracefully for future custom categories
+- [x] Per-category verb map: book *Reading/Read*, anime & movie/TV *Watching/Watched*, game *Playing/Played*
+- [x] Applies to: card status chip, timeline status, edit panel date label, series group summary — *plus the manual Add panel's date label*
+- [x] Falls back gracefully for future custom categories — *`categoryVerbs()` returns `{ active: 'In Progress', past: 'Finished' }` for unknown ids*
 
-**Acceptance:** no book-specific wording appears outside the Books category.
+**Acceptance:** no book-specific wording appears outside the Books category. ✅
 
-### 2.3 Separate description from notes — ⬜ Not started `P1`
+**Implementation notes:**
+- `CATEGORY_VERBS` + `categoryVerbs(category)` in `App.jsx` (`active` for in-progress wording, `past` for the "Date …" label).
+- Card status chip shows the active verb for in-progress; timeline status and series-group summary likewise; edit + add panels label the date input "Date Read / Watched / Played".
+- Completed → "Done" (card) / "Completed" (timeline) and Planned stay category-neutral by design.
+
+### 2.3 Separate description from notes — ✅ Done `P1`
 
 Adding from search dumps the API synopsis into `notes` (`SearchModal.jsx` → `notes: r.description`), conflating marketing copy with personal thoughts.
 
 **Requirements**
-- [ ] New `description` column on `entries`; search-add writes synopsis there, leaves `notes` empty
-- [ ] One-time migration heuristic is **not** required (existing notes stay as-is)
-- [ ] Edit panel shows description read-only (collapsible) above the personal Notes field
-- [ ] Card continues to prefer personal notes; may fall back to description
+- [x] New `description` column on `entries`; search-add writes synopsis there, leaves `notes` empty
+- [x] One-time migration heuristic is **not** required (existing notes stay as-is)
+- [x] Edit panel shows description read-only (collapsible) above the personal Notes field
+- [x] Card continues to prefer personal notes; may fall back to description
 
-**Acceptance:** newly added entries have an empty Notes field; synopsis still visible in edit panel.
+**Acceptance:** newly added entries have an empty Notes field; synopsis still visible in edit panel. ✅
+
+**Implementation notes:**
+- Migration adds `description TEXT`; included in `ENTRY_SELECT` and `addEntry`. `updateEntry` deliberately does **not** touch `description`, so the read-only synopsis survives edits.
+- `SearchModal` now writes `description: r.description` and `notes: ''`.
+- Edit panel renders a collapsible `<details>` "Synopsis" above Notes (`.edit-desc`). Card shows `entry.notes || entry.description`, so old entries (synopsis still in notes) and new ones (synopsis in description) both display a blurb.
 
 ---
 
@@ -327,3 +337,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-20 | 1.3 Delete undo implemented (deferred DB delete + 5s undo toast) |
 | 2026-07-20 | 1.4 Keyboard shortcuts + Esc-to-close; 1.5 rating slider hover fix — **Milestone 1 complete** |
 | 2026-07-21 | 2.1 Progress tracking implemented (schema + card bar/+1 + edit fields + AniList auto-fill + auto-complete) |
+| 2026-07-21 | 2.2 Per-category status wording; 2.3 separate description from notes — **Milestone 2 complete** |

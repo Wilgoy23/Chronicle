@@ -92,7 +92,7 @@ function initDb(dbPath) {
 const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
          e.date_read, e.created_at, e.series_id, e.source, e.source_id,
-         e.progress, e.progress_total, s.name AS series
+         e.progress, e.progress_total, e.description, s.name AS series
   FROM entries e
   LEFT JOIN series s ON e.series_id = s.id
 `
@@ -103,14 +103,14 @@ function getEntries(category) {
     : db.prepare(`${ENTRY_SELECT} ORDER BY e.id DESC`).all()
 }
 
-function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total }) {
+function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description }) {
   // Duplicate guard — same title in same category
   const dup = db.prepare(`${ENTRY_SELECT} WHERE e.category = ? AND LOWER(e.title) = LOWER(?)`).get(category, title)
   if (dup) return { error: 'DUPLICATE', existing: dup }
 
   const result = db.prepare(`
-    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     category,
     title,
@@ -124,6 +124,7 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
     source_id != null ? String(source_id) : null,
     progress  ?? 0,
     progress_total ?? null,
+    description ?? null,
   )
 
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid)

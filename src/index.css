@@ -2350,6 +2350,32 @@ body {
 
 .edit-notes { min-height: 80px; resize: vertical; }
 
+/* Read-only API synopsis (collapsible), sits above personal Notes */
+.edit-desc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 2px;
+  padding: 0.5rem 0.7rem;
+}
+.edit-desc-summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+.edit-desc-summary::-webkit-details-marker { display: none; }
+.edit-desc-summary::before { content: '▸ '; color: var(--text-mute); }
+.edit-desc[open] .edit-desc-summary::before { content: '▾ '; }
+.edit-desc-text {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0.5rem 0 0;
+}
+
 /* Status segmented control */
 .edit-segment {
   background: rgba(255,255,255,0.04);
