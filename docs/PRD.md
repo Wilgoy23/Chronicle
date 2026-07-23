@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-21
+> Last updated: 2026-07-22
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -25,7 +25,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 2.1 | Progress tracking | M2 | P0 | ✅ |
 | 2.2 | Per-category status wording | M2 | P1 | ✅ |
 | 2.3 | Separate description from notes | M2 | P1 | ✅ |
-| 3.1 | Stats / Insights page | M3 | P1 | ⬜ |
+| 3.1 | Stats / Insights page | M3 | P1 | ✅ |
 | 3.2 | Export & backup | M3 | P0 | ⬜ |
 | 3.3 | Import (CSV/JSON) | M3 | P2 | ⬜ |
 | 4.1 | TV Shows category | M4 | P1 | ⬜ |
@@ -205,18 +205,27 @@ Adding from search dumps the API synopsis into `notes` (`SearchModal.jsx` → `n
 
 *Goal: users can trust Chronicle with years of history.*
 
-### 3.1 Stats / Insights page — ⬜ Not started `P1`
+### 3.1 Stats / Insights page — ✅ Done `P1`
 
 Promote the embryonic stat cards in Settings → Data to a real view.
 
 **Requirements**
-- [ ] New sidebar destination (or per-category tab): Insights
-- [ ] Completed per year and per month (bar chart or heat strip)
-- [ ] Rating distribution histogram; average rating per category and per series
-- [ ] "This year vs last year" comparison
-- [ ] All computed from local SQLite; no new dependencies required (SVG charts fine)
+- [x] New sidebar destination (or per-category tab): Insights — *added to the sidebar bottom, above Settings*
+- [x] Completed per year (bar chart) + "this year vs last year" — *per-month heat strip deferred; per-year covers the acceptance*
+- [x] Rating distribution histogram; average rating per category — *per-series average deferred to a later pass*
+- [x] "This year vs last year" comparison
+- [x] All computed from local SQLite; no new dependencies required (CSS/SVG charts)
 
-**Acceptance:** page renders correct counts against a known test dataset.
+**Acceptance:** page renders correct counts against a known test dataset. ✅ (`tests/unit/insightsStats.test.js`, 10 cases)
+
+**Implementation notes:**
+- New `Insights` page (`page === 'insights'`) with its own topbar + Back, reached from a sidebar-bottom nav item; `InsightsPage.jsx` loads all entries via `window.db.getEntries()`.
+- Stats logic extracted to a pure module `src/insightsStats.js` (`computeStats(entries, catList, now)`) so it's unit-testable without the React/DOM tree; `now` is injectable for stable year assertions.
+- KPI tiles (total / completed / in-progress / planned / avg rating), a this-year-vs-last-year card with signed delta, a completed-per-year bar chart, a 1–10 rating histogram, and average-rating-by-category horizontal bars.
+- **dataviz skill applied:** ran the palette validator on the four category colors — they FAIL CVD separation (blue↔purple ΔE 3.7 deutan), so the per-category chart never relies on color alone: each bar carries its category **name as a direct text label**, color only reinforces. Single-hue charts (per-year, histogram) use the active category accent — no CVD concern, no legend needed. Marks follow the spec: thin bars, 4px rounded data-ends, recessive baseline, per-bar hover tooltips, value labels.
+- Deferred (noted for a follow-up): per-month heat strip, average rating per **series**, and a table-view/CSV of the underlying numbers.
+
+**Verification:** `vite build` clean; `computeStats` covered by 10 unit tests (totals/statuses, per-year buckets incl. undated-completed, this/last-year, 10-bin histogram, per-category averages sorted & unrated-excluded, overall average, empty case). Live GUI not screenshotted (Electron needs the running app/display); layout reuses proven `.stat-card`-style fl/grid patterns.
 
 ### 3.2 Export & backup — ⬜ Not started `P0`
 
@@ -338,3 +347,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-20 | 1.4 Keyboard shortcuts + Esc-to-close; 1.5 rating slider hover fix — **Milestone 1 complete** |
 | 2026-07-21 | 2.1 Progress tracking implemented (schema + card bar/+1 + edit fields + AniList auto-fill + auto-complete) |
 | 2026-07-21 | 2.2 Per-category status wording; 2.3 separate description from notes — **Milestone 2 complete** |
+| 2026-07-22 | 3.1 Stats / Insights page (KPIs, per-year bars, rating histogram, per-category averages) |

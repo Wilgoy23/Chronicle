@@ -8,6 +8,7 @@ import SeriesGroup from './components/SeriesGroup'
 import TimelineView from './components/TimelineView'
 import SettingsPage from './components/SettingsPage'
 import ReleasesPanel from './components/ReleasesPanel'
+import InsightsPage from './components/InsightsPage'
 
 export const DEFAULT_CATEGORIES = [
   { id: 'book',  label: 'Books',  icon: '📖', color: '#e8a838', enabled: true },
@@ -32,6 +33,7 @@ const ICONS = {
   bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
   sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
+  insights: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="21" x2="21" y2="21"/><rect x="5" y="11" width="3.4" height="7"/><rect x="10.3" y="6" width="3.4" height="12"/><rect x="15.6" y="14" width="3.4" height="4"/></svg>,
 }
 
 export const STATUS_LABELS = {
@@ -435,6 +437,15 @@ export default function App() {
 
             <div className="sidebar-bottom">
               <button
+                className={`nav-item ${page === 'insights' ? 'active' : ''}`}
+                style={{ '--accent': '#94a3b8' }}
+                onClick={() => { setPage(page === 'insights' ? 'collection' : 'insights'); setSidebarOpen(false) }}
+                title="Insights"
+              >
+                <span className="nav-icon">{ICONS.insights}</span>
+                <span className="nav-label">Insights</span>
+              </button>
+              <button
                 className={`nav-item ${page === 'settings' ? 'active' : ''}`}
                 style={{ '--accent': '#94a3b8' }}
                 onClick={() => { page === 'settings' ? handleSettingsReturn() : setPage('settings'); setSidebarOpen(false) }}
@@ -530,6 +541,24 @@ export default function App() {
             </button>
           </header>
           <SettingsPage />
+        </main>
+      ) : page === 'insights' ? (
+        <main className="main">
+          <header className="topbar" style={{ '--accent': '#94a3b8' }}>
+            <div className="topbar-title">
+              <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
+                {ICONS.menu}
+              </button>
+              <span className="topbar-icon">{ICONS.insights}</span>
+              <h1>Insights</h1>
+            </div>
+            <button className="add-btn" style={{ '--accent': '#94a3b8' }} onClick={() => setPage('collection')}>
+              {ICONS.back}&nbsp; Back
+            </button>
+          </header>
+          <div className="insights-scroll">
+            <InsightsPage categories={categories} accent={activeCat?.color ?? '#c084fc'} />
+          </div>
         </main>
       ) : (
         <main className="main">
