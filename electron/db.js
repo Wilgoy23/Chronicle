@@ -1,8 +1,10 @@
 const Database = require('better-sqlite3')
 
 let db
+let dbFilePath = null
 
 function initDb(dbPath) {
+  dbFilePath = dbPath
   db = new Database(dbPath)
 
   db.exec(`
@@ -239,10 +241,54 @@ function unseenReleaseCount() {
   return db.prepare(`SELECT COUNT(*) AS n FROM releases WHERE status = 'new'`).get().n
 }
 
+// ── Export / backup support ──────────────────────────────────────
+
+function getDbPath() {
+  return dbFilePath
+}
+
+// SQLite online backup — consistent snapshot even if the DB is mid-write.
+function backupTo(destPath) {
+  return db.backup(destPath)
+}
+
+function closeDb() {
+  if (db) { db.close(); db = null }
+}
+
+// Cheap sanity check before overwriting the live DB: opens read-only and
+// confirms the file is a SQLite DB with an `entries` table.
+function validateBackupFile(filePath) {
+  try {
+    const test = new Database(filePath, { readonly: true, fileMustExist: true })
+    const row = test.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entries'").get()
+    test.close()
+    return !!row
+  } catch {
+    return false
+  }
+}
+
+function getAllSeries() {
+  return db.prepare('SELECT id, category, name, created_at FROM series ORDER BY category, name').all()
+}
+
+// A full, portable snapshot of the library (all entries + series, every column).
+function exportData() {
+  return {
+    format:     'chronicle-export',
+    version:    1,
+    exportedAt: new Date().toISOString(),
+    entries:    db.prepare(`${ENTRY_SELECT} ORDER BY e.id`).all(),
+    series:     getAllSeries(),
+  }
+}
+
 module.exports = {
   initDb,
   getEntries, addEntry, updateEntry, deleteEntry,
   getSeries, addSeries, deleteSeries, renameSeries,
   getEntriesWithSource, getEntriesMissingSource, setEntrySource,
   getReleases, addRelease, getKnownReleaseSourceIds, setReleaseStatus, unseenReleaseCount,
+  getDbPath, closeDb, getAllSeries, exportData, validateBackupFile, backupTo,
 }

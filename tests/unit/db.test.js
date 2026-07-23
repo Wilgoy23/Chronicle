@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   initDb, addEntry, getEntries, updateEntry, deleteEntry,
   getSeries, addSeries, deleteSeries, renameSeries,
+  exportData, getAllSeries, backupTo, validateBackupFile, closeDb, getDbPath,
 } from '../../electron/db.js'
 
 describe('initDb', () => {
@@ -184,6 +185,77 @@ describe('description (API synopsis, separate from notes)', () => {
     const updated = updateEntry({ id: entry.id, title: entry.title, status: 'completed', notes: 'loved it' })
     expect(updated.description).toBe('A ninja story')
     expect(updated.notes).toBe('loved it')
+  })
+})
+
+describe('exportData', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('returns a versioned snapshot of all entries and series', () => {
+    const s = addSeries('book', 'Dune')
+    addEntry({ category: 'book', title: 'Dune', status: 'completed', rating: 9, series_id: s.id })
+    addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', progress: 5, progress_total: 220 })
+
+    const data = exportData()
+    expect(data.format).toBe('chronicle-export')
+    expect(data.version).toBe(1)
+    expect(data.exportedAt).toBeTypeOf('string')
+    expect(data.entries).toHaveLength(2)
+    expect(data.series).toHaveLength(1)
+    // entries carry every column, including the joined series name
+    const dune = data.entries.find(e => e.title === 'Dune')
+    expect(dune.series).toBe('Dune')
+    expect(dune.rating).toBe(9)
+  })
+})
+
+describe('backup / restore round-trip', () => {
+  const os   = require('os')
+  const path = require('path')
+  const fs   = require('fs')
+
+  it('export → clear all → restore reproduces the full library', async () => {
+    const dir     = fs.mkdtempSync(path.join(os.tmpdir(), 'chronicle-backup-'))
+    const dbPath  = path.join(dir, 'data.db')
+    const bakPath = path.join(dir, 'backup.db')
+    try {
+      initDb(dbPath)
+      const s = addSeries('book', 'Dune')
+      addEntry({ category: 'book',  title: 'Dune',   status: 'completed',   rating: 9, series_id: s.id, progress: 0, progress_total: null })
+      addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', rating: null, progress: 5, progress_total: 220 })
+      const before = getEntries()
+
+      // Back up, then wipe everything.
+      await backupTo(bakPath)
+      expect(validateBackupFile(bakPath)).toBe(true)
+      before.forEach(e => deleteEntry(e.id))
+      expect(getEntries()).toHaveLength(0)
+
+      // Restore: close, overwrite the db file with the backup, reopen.
+      closeDb()
+      fs.copyFileSync(bakPath, getDbPath() ?? dbPath)
+      initDb(dbPath)
+
+      const after = getEntries()
+      expect(after).toHaveLength(before.length)
+      expect(after.map(e => e.title).sort()).toEqual(['Dune', 'Naruto'])
+      expect(getAllSeries()).toHaveLength(1)
+      expect(after.find(e => e.title === 'Dune').series).toBe('Dune')
+    } finally {
+      closeDb()
+      try { fs.rmSync(dir, { recursive: true, force: true }) } catch {}
+    }
+  })
+
+  it('rejects a non-database file', () => {
+    const os = require('os'), path = require('path'), fs = require('fs')
+    const bad = path.join(os.tmpdir(), `chronicle-notadb-${Date.now()}.db`)
+    fs.writeFileSync(bad, 'this is not sqlite')
+    try {
+      expect(validateBackupFile(bad)).toBe(false)
+    } finally {
+      try { fs.unlinkSync(bad) } catch {}
+    }
   })
 })
 

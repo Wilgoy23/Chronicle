@@ -26,7 +26,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 2.2 | Per-category status wording | M2 | P1 | ✅ |
 | 2.3 | Separate description from notes | M2 | P1 | ✅ |
 | 3.1 | Stats / Insights page | M3 | P1 | ✅ |
-| 3.2 | Export & backup | M3 | P0 | ⬜ |
+| 3.2 | Export & backup | M3 | P0 | ✅ |
 | 3.3 | Import (CSV/JSON) | M3 | P2 | ⬜ |
 | 4.1 | TV Shows category | M4 | P1 | ⬜ |
 | 4.2 | Manga category | M4 | P2 | ⬜ |
@@ -227,16 +227,25 @@ Promote the embryonic stat cards in Settings → Data to a real view.
 
 **Verification:** `vite build` clean; `computeStats` covered by 10 unit tests (totals/statuses, per-year buckets incl. undated-completed, this/last-year, 10-bin histogram, per-category averages sorted & unrated-excluded, overall average, empty case). Live GUI not screenshotted (Electron needs the running app/display); layout reuses proven `.stat-card`-style fl/grid patterns.
 
-### 3.2 Export & backup — ⬜ Not started `P0`
+### 3.2 Export & backup — ✅ Done `P0`
 
 Currently there's a "Clear all entries" danger button but no way to export or back up.
 
 **Requirements**
-- [ ] Settings → Data: "Export JSON" and "Export CSV" via native save dialog (all entries + series, all columns)
-- [ ] "Back up database" button: copies the SQLite file to a chosen location
-- [ ] "Restore from backup" with an explicit confirm (replaces current DB, relaunches or reloads)
+- [x] Settings → Data: "Export JSON" and "Export CSV" via native save dialog (all entries + series, all columns)
+- [x] "Back up database" button: copies the SQLite file to a chosen location — *uses SQLite's online backup API, consistent even mid-write*
+- [x] "Restore from backup" with an explicit confirm (replaces current DB, relaunches or reloads)
 
-**Acceptance:** export → clear all → restore round-trips the full library.
+**Acceptance:** export → clear all → restore round-trips the full library. ✅ (`db.test.js` round-trip test)
+
+**Implementation notes:**
+- New `window.data` bridge (`exportJson` / `exportCsv` / `backup` / `restore`); handlers in `electron/main.js` using native save/open dialogs.
+- `db.js` gains `exportData()` (versioned `{format, version, exportedAt, entries, series}` snapshot, all columns + joined series name), `getAllSeries()`, `getDbPath()`, `closeDb()`, `backupTo()` (online backup API), and `validateBackupFile()`.
+- CSV serialization extracted to a pure `electron/csv.js` (RFC-ish quoting/escaping) so it's reusable and unit-tested.
+- **Restore is defensive:** validates the picked file is a real SQLite DB with an `entries` table *before* touching anything; shows a native warning confirm; writes a `.pre-restore` safety copy of the current DB, overwrites, re-inits (runs migrations on the restored file), then reloads the renderer. On any failure it rolls back to the safety copy.
+- Settings → Data now has an "Export & backup" row with per-action feedback (ok/error), plus the pre-existing "Clear all" danger zone.
+
+**Verification:** `npm test` → **76/76 pass**, including the db-backed round-trip (populate → `backupTo` → validate → delete all → close/copy/re-init → library reproduced, series intact), `validateBackupFile` rejecting a non-DB file, the `exportData` snapshot shape, and 6 CSV cases (null→empty, comma/quote/newline escaping, column order, CRLF). This run also confirmed the earlier 2.1/2.3/3.1 db tests (previously blocked by the app's file lock) all green. GUI dialogs not driven headlessly.
 
 ### 3.3 Import — ⬜ Not started `P2`
 
@@ -348,3 +357,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-21 | 2.1 Progress tracking implemented (schema + card bar/+1 + edit fields + AniList auto-fill + auto-complete) |
 | 2026-07-21 | 2.2 Per-category status wording; 2.3 separate description from notes — **Milestone 2 complete** |
 | 2026-07-22 | 3.1 Stats / Insights page (KPIs, per-year bars, rating histogram, per-category averages) |
+| 2026-07-22 | 3.2 Export & backup (JSON/CSV export, online-backup, defensive restore) — 76/76 tests |

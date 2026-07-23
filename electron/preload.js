@@ -16,6 +16,13 @@ contextBridge.exposeInMainWorld('settings', {
   set: (patch) => ipcRenderer.invoke('settings:set', patch),
 })
 
+contextBridge.exposeInMainWorld('data', {
+  exportJson: () => ipcRenderer.invoke('data:exportJson'),
+  exportCsv:  () => ipcRenderer.invoke('data:exportCsv'),
+  backup:     () => ipcRenderer.invoke('data:backup'),
+  restore:    () => ipcRenderer.invoke('data:restore'),
+})
+
 contextBridge.exposeInMainWorld('api', {
   searchBooks:  (query) => ipcRenderer.invoke('api:searchBooks',  query),
   searchAnime:  (query) => ipcRenderer.invoke('api:searchAnime',  query),

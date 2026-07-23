@@ -273,9 +273,18 @@ function NotificationsSection({ settings, onSave }) {
 }
 
 // ── Data ───────────────────────────────────────────
+const EXPORT_MSG = {
+  json:    res => `Exported ${res.count} entries to JSON.`,
+  csv:     res => `Exported ${res.count} entries to CSV.`,
+  backup:  ()  => 'Backup saved.',
+  restore: ()  => 'Library restored.',
+}
+
 function DataSection() {
   const [stats, setStats]   = useState(null)
   const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy]     = useState(null)   // action id currently running
+  const [msg, setMsg]       = useState(null)   // { ok, text } feedback
 
   useEffect(() => {
     window.db.getEntries().then(entries => {
@@ -284,6 +293,20 @@ function DataSection() {
       setStats({ total: entries.length, counts })
     })
   }, [])
+
+  async function run(action, fn) {
+    setBusy(action)
+    setMsg(null)
+    try {
+      const res = await fn()
+      if (res?.ok)            setMsg({ ok: true,  text: (EXPORT_MSG[action] ?? (() => 'Done.'))(res) })
+      else if (res?.canceled) setMsg(null)
+      else                    setMsg({ ok: false, text: res?.error || 'Something went wrong.' })
+    } catch {
+      setMsg({ ok: false, text: 'Something went wrong.' })
+    }
+    setBusy(null)
+  }
 
   async function handleClear() {
     if (!confirm) { setConfirm(true); return }
@@ -313,6 +336,21 @@ function DataSection() {
           ))}
         </div>
       )}
+
+      <div className="data-actions">
+        <h3>Export &amp; backup</h3>
+        <p className="settings-desc">
+          JSON is a full snapshot (entries + series); CSV is a spreadsheet of entries;
+          a database backup can be restored later to replace your library.
+        </p>
+        <div className="data-btn-row">
+          <button className="data-action-btn" disabled={!!busy} onClick={() => run('json',    () => window.data.exportJson())}>Export JSON</button>
+          <button className="data-action-btn" disabled={!!busy} onClick={() => run('csv',     () => window.data.exportCsv())}>Export CSV</button>
+          <button className="data-action-btn" disabled={!!busy} onClick={() => run('backup',  () => window.data.backup())}>Back up database</button>
+          <button className="data-action-btn" disabled={!!busy} onClick={() => run('restore', () => window.data.restore())}>Restore from backup…</button>
+        </div>
+        {msg && <span className={`setting-status ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</span>}
+      </div>
 
       <div className="danger-zone">
         <h3>Danger Zone</h3>
