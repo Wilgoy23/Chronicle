@@ -3,7 +3,7 @@ const path   = require('path')
 const fs     = require('fs')
 const {
   initDb, getReleases, setReleaseStatus, unseenReleaseCount,
-  exportData, getDbPath, closeDb, validateBackupFile, backupTo,
+  exportData, importData, getDbPath, closeDb, validateBackupFile, backupTo,
 } = require('./db')
 const { registerHandlers } = require('./ipc')
 const { runReleaseScan }   = require('./releaseChecker')
@@ -134,6 +134,21 @@ app.whenReady().then(() => {
       return { ok: true, path: filePath, count: entries.length }
     } catch (err) {
       return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('data:importJson', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Chronicle JSON',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    })
+    if (canceled || !filePaths?.length) return { ok: false, canceled: true }
+    try {
+      const data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'))
+      return importData(data)
+    } catch (err) {
+      return { ok: false, error: err instanceof SyntaxError ? 'That file is not valid JSON.' : String(err) }
     }
   })
 

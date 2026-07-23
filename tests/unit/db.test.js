@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   initDb, addEntry, getEntries, updateEntry, deleteEntry,
   getSeries, addSeries, deleteSeries, renameSeries,
-  exportData, getAllSeries, backupTo, validateBackupFile, closeDb, getDbPath,
+  exportData, importData, getAllSeries, backupTo, validateBackupFile, closeDb, getDbPath,
 } from '../../electron/db.js'
 
 describe('initDb', () => {
@@ -206,6 +206,69 @@ describe('exportData', () => {
     const dune = data.entries.find(e => e.title === 'Dune')
     expect(dune.series).toBe('Dune')
     expect(dune.rating).toBe(9)
+  })
+})
+
+describe('importData', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('reproduces a library from a Chronicle export into a fresh DB', () => {
+    // Build a snapshot in one DB…
+    const s = addSeries('book', 'Dune')
+    addEntry({ category: 'book',  title: 'Dune',   status: 'completed',   rating: 9, series_id: s.id })
+    addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', progress: 5, progress_total: 220 })
+    const snapshot = exportData()
+
+    // …then import it into an empty DB.
+    initDb(':memory:')
+    const res = importData(snapshot)
+    expect(res.ok).toBe(true)
+    expect(res.imported).toBe(2)
+    expect(res.skipped).toBe(0)
+
+    const after = getEntries()
+    expect(after.map(e => e.title).sort()).toEqual(['Dune', 'Naruto'])
+    const dune = after.find(e => e.title === 'Dune')
+    expect(dune.series).toBe('Dune')          // series remapped by (category, name)
+    expect(dune.rating).toBe(9)
+    const naruto = after.find(e => e.title === 'Naruto')
+    expect(naruto.progress).toBe(5)
+    expect(naruto.progress_total).toBe(220)
+    expect(getAllSeries()).toHaveLength(1)
+  })
+
+  it('preserves original created_at timestamps', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    const snapshot = exportData()
+    const original = snapshot.entries[0].created_at
+
+    initDb(':memory:')
+    importData(snapshot)
+    expect(getEntries()[0].created_at).toBe(original)
+  })
+
+  it('skips entries whose title already exists in the same category (merge)', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed', rating: 9 })
+    const snapshot = exportData()
+    // Import back into the SAME db that already has Dune.
+    const res = importData(snapshot)
+    expect(res.imported).toBe(0)
+    expect(res.skipped).toBe(1)
+    expect(getEntries()).toHaveLength(1)   // no duplicate row
+  })
+
+  it('carries over series that have no entries', () => {
+    addSeries('book', 'Empty Series')
+    const snapshot = exportData()
+    initDb(':memory:')
+    importData(snapshot)
+    expect(getAllSeries().map(s => s.name)).toContain('Empty Series')
+  })
+
+  it('rejects a non-Chronicle payload', () => {
+    expect(importData({ foo: 'bar' }).ok).toBe(false)
+    expect(importData(null).ok).toBe(false)
+    expect(importData({ format: 'chronicle-export', entries: 'nope' }).ok).toBe(false)
   })
 })
 

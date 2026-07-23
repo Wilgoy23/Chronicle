@@ -284,11 +284,77 @@ function exportData() {
   }
 }
 
+// Ingest a Chronicle export (from exportData). Series are matched/created by
+// (category, name) in the *target* DB, so ids remap cleanly into any install.
+// mode 'merge' (default) skips entries whose title already exists in the same
+// category; original created_at / date_read are preserved. Returns counts.
+function importData(data, { mode = 'merge' } = {}) {
+  if (!data || data.format !== 'chronicle-export' || !Array.isArray(data.entries)) {
+    return { ok: false, error: 'That file is not a Chronicle JSON export.' }
+  }
+
+  const insertSeries = db.prepare('INSERT OR IGNORE INTO series (category, name) VALUES (?, ?)')
+  const findSeries   = db.prepare('SELECT id FROM series WHERE category = ? AND name = ?')
+  const findDup      = db.prepare('SELECT id FROM entries WHERE category = ? AND LOWER(title) = LOWER(?)')
+  const insertEntry  = db.prepare(`
+    INSERT INTO entries
+      (category, title, status, rating, notes, cover_url, series_id, date_read,
+       source, source_id, progress, progress_total, description, created_at)
+    VALUES
+      (@category, @title, @status, @rating, @notes, @cover_url, @series_id, @date_read,
+       @source, @source_id, @progress, @progress_total, @description, @created_at)
+  `)
+
+  const seriesBefore = db.prepare('SELECT COUNT(*) AS n FROM series').get().n
+  let imported = 0, skipped = 0
+
+  const run = db.transaction(() => {
+    // Seed the series table first so even empty series carry over.
+    for (const s of (Array.isArray(data.series) ? data.series : [])) {
+      if (s && s.category && s.name) insertSeries.run(s.category, s.name)
+    }
+
+    for (const e of data.entries) {
+      if (!e || !e.category || !e.title) { skipped++; continue }
+      if (mode === 'merge' && findDup.get(e.category, e.title)) { skipped++; continue }
+
+      // Resolve the series by name within the entry's category.
+      let series_id = null
+      if (e.series) {
+        insertSeries.run(e.category, e.series)
+        series_id = findSeries.get(e.category, e.series)?.id ?? null
+      }
+
+      insertEntry.run({
+        category:       e.category,
+        title:          e.title,
+        status:         e.status ?? 'completed',
+        rating:         e.rating ?? null,
+        notes:          e.notes ?? '',
+        cover_url:      e.cover_url ?? null,
+        series_id,
+        date_read:      e.date_read ?? null,
+        source:         e.source ?? null,
+        source_id:      e.source_id != null ? String(e.source_id) : null,
+        progress:       e.progress ?? 0,
+        progress_total: e.progress_total ?? null,
+        description:    e.description ?? null,
+        created_at:     e.created_at ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
+      })
+      imported++
+    }
+  })
+  run()
+
+  const seriesAfter = db.prepare('SELECT COUNT(*) AS n FROM series').get().n
+  return { ok: true, imported, skipped, seriesAdded: seriesAfter - seriesBefore }
+}
+
 module.exports = {
   initDb,
   getEntries, addEntry, updateEntry, deleteEntry,
   getSeries, addSeries, deleteSeries, renameSeries,
   getEntriesWithSource, getEntriesMissingSource, setEntrySource,
   getReleases, addRelease, getKnownReleaseSourceIds, setReleaseStatus, unseenReleaseCount,
-  getDbPath, closeDb, getAllSeries, exportData, validateBackupFile, backupTo,
+  getDbPath, closeDb, getAllSeries, exportData, importData, validateBackupFile, backupTo,
 }

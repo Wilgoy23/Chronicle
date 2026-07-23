@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-22
+> Last updated: 2026-07-23
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -27,7 +27,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 2.3 | Separate description from notes | M2 | P1 | ✅ |
 | 3.1 | Stats / Insights page | M3 | P1 | ✅ |
 | 3.2 | Export & backup | M3 | P0 | ✅ |
-| 3.3 | Import (CSV/JSON) | M3 | P2 | ⬜ |
+| 3.3 | Import (CSV/JSON) | M3 | P2 | ✅ |
 | 4.1 | TV Shows category | M4 | P1 | ⬜ |
 | 4.2 | Manga category | M4 | P2 | ⬜ |
 | 4.3 | Fully custom categories | M4 | P2 | ⬜ |
@@ -247,12 +247,22 @@ Currently there's a "Clear all entries" danger button but no way to export or ba
 
 **Verification:** `npm test` → **76/76 pass**, including the db-backed round-trip (populate → `backupTo` → validate → delete all → close/copy/re-init → library reproduced, series intact), `validateBackupFile` rejecting a non-DB file, the `exportData` snapshot shape, and 6 CSV cases (null→empty, comma/quote/newline escaping, column order, CRLF). This run also confirmed the earlier 2.1/2.3/3.1 db tests (previously blocked by the app's file lock) all green. GUI dialogs not driven headlessly.
 
-### 3.3 Import — ⬜ Not started `P2`
+### 3.3 Import — ✅ Done `P2`
 
-- [ ] Import Chronicle JSON (from 3.2)
-- [ ] Stretch: Goodreads / MAL / Letterboxd CSV mappers (one per release, prioritized by demand)
+- [x] Import Chronicle JSON (from 3.2)
+- [ ] Stretch: Goodreads / MAL / Letterboxd CSV mappers (one per release, prioritized by demand) — *deferred; each is a per-source column mapper on top of the same `importData` core*
 
-**Acceptance:** importing a Chronicle JSON export into a fresh install reproduces the library.
+**Acceptance:** importing a Chronicle JSON export into a fresh install reproduces the library. ✅ (`db.test.js` import round-trip)
+
+**Implementation notes:**
+- `importData(data, { mode })` in `electron/db.js` ingests an `exportData()` snapshot. Series are matched/created by **(category, name)** in the *target* DB — so the export's `series_id`s remap cleanly into any install (fresh or existing). The `series` array is seeded first, so even series with no entries carry over.
+- Default `mode: 'merge'` **skips** any entry whose title already exists in the same category (case-insensitive, reusing the add-time duplicate rule); intra-file dupes skip too. Returns `{ ok, imported, skipped, seriesAdded }`.
+- Original `created_at` and `date_read` are preserved (insert carries them explicitly), so imported history lands in the right year on the Insights page. All progress/description/source columns round-trip.
+- Malformed input is rejected before any write: non-object, wrong `format`, or a non-array `entries` returns `{ ok: false }`.
+- IPC `data:importJson` (native open dialog → `JSON.parse` → `importData`) in `electron/main.js`, exposed via `window.data.importJson` in `preload.js`. JSON parse errors surface a friendly "not valid JSON" message.
+- Settings → Data gains an "Import JSON…" button beside the export/backup row; on success it shows `Imported N entries, skipped M duplicates` then reloads the renderer so the grid and Insights reflect the merged library.
+
+**Verification:** `npm test` → **81/81 pass** (5 new import tests: export→fresh-DB round-trip with series remap + progress intact, `created_at` preservation, merge-skips-existing-title, empty-series carry-over, malformed-payload rejection). `vite build` clean; better-sqlite3 rebuilt for the Electron ABI. GUI dialog not driven headlessly.
 
 ---
 
@@ -358,3 +368,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-21 | 2.2 Per-category status wording; 2.3 separate description from notes — **Milestone 2 complete** |
 | 2026-07-22 | 3.1 Stats / Insights page (KPIs, per-year bars, rating histogram, per-category averages) |
 | 2026-07-22 | 3.2 Export & backup (JSON/CSV export, online-backup, defensive restore) — 76/76 tests |
+| 2026-07-23 | 3.3 Import (Chronicle JSON, series remap by name, merge-skips-dupes) — **Milestone 3 complete** — 81/81 tests |
