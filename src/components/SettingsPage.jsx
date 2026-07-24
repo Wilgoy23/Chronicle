@@ -11,6 +11,7 @@ const NOTIF_CATEGORIES = [
   { id: 'book',  label: 'Books' },
   { id: 'anime', label: 'Anime' },
   { id: 'movie', label: 'Movies' },
+  { id: 'tv',    label: 'TV Shows' },
   { id: 'game',  label: 'Games' },
 ]
 
@@ -127,13 +128,18 @@ function ApiSection({ settings, onSave }) {
 // ── Categories ─────────────────────────────────────
 function CategoriesSection({ settings, onSave }) {
   const DEFAULT_CATEGORIES = [
-    { id: 'book',  label: 'Books',  icon: '📖', color: '#e8a838', enabled: true },
-    { id: 'anime', label: 'Anime',  icon: '⛩',  color: '#c084fc', enabled: true },
-    { id: 'movie', label: 'Movies', icon: '🎬', color: '#38bdf8', enabled: true },
-    { id: 'game',  label: 'Games',  icon: '🎮', color: '#4ade80', enabled: true },
+    { id: 'book',  label: 'Books',    icon: '📖', color: '#e8a838', enabled: true },
+    { id: 'anime', label: 'Anime',    icon: '⛩',  color: '#c084fc', enabled: true },
+    { id: 'movie', label: 'Movies',   icon: '🎬', color: '#38bdf8', enabled: true },
+    { id: 'tv',    label: 'TV Shows', icon: '📺', color: '#fb7185', enabled: true },
+    { id: 'game',  label: 'Games',    icon: '🎮', color: '#4ade80', enabled: true },
   ]
 
-  const saved = settings.categories ?? DEFAULT_CATEGORIES
+  // Append any newly-shipped default categories (e.g. TV Shows) to a stored list.
+  const stored = settings.categories
+  const saved = stored?.length
+    ? [...stored, ...DEFAULT_CATEGORIES.filter(d => !stored.some(c => c.id === d.id))]
+    : DEFAULT_CATEGORIES
   const [cats, setCats] = useState(saved)
 
   function toggle(id) {
@@ -189,7 +195,7 @@ function CategoriesSection({ settings, onSave }) {
 function NotificationsSection({ settings, onSave }) {
   const notif = settings.notifications ?? {}
   const enabled = notif.enabled !== false
-  const cats = notif.categories ?? { book: true, anime: true, movie: true, game: true }
+  const cats = notif.categories ?? { book: true, anime: true, movie: true, tv: true, game: true }
   const [checking, setChecking] = useState(false)
   const [result, setResult]     = useState(null)
 

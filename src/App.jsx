@@ -11,17 +11,28 @@ import ReleasesPanel from './components/ReleasesPanel'
 import InsightsPage from './components/InsightsPage'
 
 export const DEFAULT_CATEGORIES = [
-  { id: 'book',  label: 'Books',  icon: '📖', color: '#e8a838', enabled: true },
-  { id: 'anime', label: 'Anime',  icon: '⛩',  color: '#c084fc', enabled: true },
-  { id: 'movie', label: 'Movies', icon: '🎬', color: '#38bdf8', enabled: true },
-  { id: 'game',  label: 'Games',  icon: '🎮', color: '#4ade80', enabled: true },
+  { id: 'book',  label: 'Books',    icon: '📖', color: '#e8a838', enabled: true },
+  { id: 'anime', label: 'Anime',    icon: '⛩',  color: '#c084fc', enabled: true },
+  { id: 'movie', label: 'Movies',   icon: '🎬', color: '#38bdf8', enabled: true },
+  { id: 'tv',    label: 'TV Shows', icon: '📺', color: '#fb7185', enabled: true },
+  { id: 'game',  label: 'Games',    icon: '🎮', color: '#4ade80', enabled: true },
 ]
+
+// Reconcile stored categories with the current defaults so users who saved
+// their category settings before a new default (e.g. TV Shows) shipped still
+// get it — appended at the end, preserving their order/color/enabled choices.
+export function mergeCategories(stored) {
+  if (!Array.isArray(stored) || stored.length === 0) return DEFAULT_CATEGORIES
+  const known = new Set(stored.map(c => c.id))
+  return [...stored, ...DEFAULT_CATEGORIES.filter(c => !known.has(c.id))]
+}
 
 const S = 15
 const ICONS = {
   book:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
   anime:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>,
   movie:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>,
+  tv:       <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="13" rx="2"/><polyline points="7 3 12 7 17 3"/></svg>,
   game:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15.5" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>,
   settings: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="14" cy="20" r="2"/></svg>,
   grid:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
@@ -144,7 +155,7 @@ export default function App() {
 
   useEffect(() => {
     window.settings.get().then(s => {
-      if (s.categories) setCategories(s.categories)
+      setCategories(mergeCategories(s.categories))
     })
   }, [])
 
@@ -395,7 +406,7 @@ export default function App() {
   function handleSettingsReturn() {
     setPage('collection')
     window.settings.get().then(s => {
-      if (s.categories) setCategories(s.categories)
+      setCategories(mergeCategories(s.categories))
     })
   }
 

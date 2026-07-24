@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   searchBooks:  (query) => ipcRenderer.invoke('api:searchBooks',  query),
   searchAnime:  (query) => ipcRenderer.invoke('api:searchAnime',  query),
   searchMovies: (query) => ipcRenderer.invoke('api:searchMovies', query),
+  searchTv:     (query) => ipcRenderer.invoke('api:searchTv',     query),
   searchGames:  (query) => ipcRenderer.invoke('api:searchGames',  query),
 })
 

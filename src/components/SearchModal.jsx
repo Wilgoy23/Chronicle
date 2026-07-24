@@ -9,6 +9,7 @@ const API_LABELS = {
   book:  'Hardcover',
   anime: 'AniList',
   movie: 'TMDB',
+  tv:    'TMDB',
   game:  'RAWG',
 }
 
@@ -17,12 +18,14 @@ const SOURCE_KEYS = {
   book:  'hardcover',
   anime: 'anilist',
   movie: 'tmdb',
+  tv:    'tmdb',
   game:  'rawg',
 }
 
 const KEY_HINTS = {
   book:  'hardcover.app → Settings → API',
   movie: 'themoviedb.org → Settings → API → API Key (v3)',
+  tv:    'themoviedb.org → Settings → API → API Key (v3)',
   game:  'rawg.io → API Key (free account)',
 }
 
@@ -30,6 +33,7 @@ async function doApiSearch(category, query) {
   if (category === 'book')  return window.api.searchBooks(query)
   if (category === 'anime') return window.api.searchAnime(query)
   if (category === 'movie') return window.api.searchMovies(query)
+  if (category === 'tv')    return window.api.searchTv(query)
   if (category === 'game')  return window.api.searchGames(query)
   return []
 }

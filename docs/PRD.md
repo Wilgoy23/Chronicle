@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-23
+> Last updated: 2026-07-24
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -28,7 +28,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 3.1 | Stats / Insights page | M3 | P1 | ✅ |
 | 3.2 | Export & backup | M3 | P0 | ✅ |
 | 3.3 | Import (CSV/JSON) | M3 | P2 | ✅ |
-| 4.1 | TV Shows category | M4 | P1 | ⬜ |
+| 4.1 | TV Shows category | M4 | P1 | ✅ |
 | 4.2 | Manga category | M4 | P2 | ⬜ |
 | 4.3 | Fully custom categories | M4 | P2 | ⬜ |
 | 5.1 | Series rename UI | M5 | P1 | ⬜ |
@@ -268,17 +268,25 @@ Currently there's a "Clear all entries" danger button but no way to export or ba
 
 ## Milestone 4 — Category expansion
 
-### 4.1 TV Shows category — ⬜ Not started `P1`
+### 4.1 TV Shows category — ✅ Done `P1`
 
 TMDB (already integrated for movies) has a TV search endpoint — mostly wiring.
 
 **Requirements**
-- [ ] New default category `tv` with icon + accent color
-- [ ] `electron/api.js`: `searchTv` against TMDB `/search/tv` (reuses existing key)
-- [ ] Release checker support (TMDB season data) — stretch
-- [ ] Watching/Watched verbs (depends on 2.2), episode progress (synergy with 2.1)
+- [x] New default category `tv` with icon + accent color
+- [x] `electron/api.js`: `searchTv` against TMDB `/search/tv` (reuses existing key)
+- [x] Release checker support (TMDB season data) — *stretch shipped, not deferred*
+- [x] Watching/Watched verbs (depends on 2.2), episode progress (synergy with 2.1)
 
-**Acceptance:** can search, add, and track a TV show end-to-end with the existing TMDB key.
+**Acceptance:** can search, add, and track a TV show end-to-end with the existing TMDB key. ✅
+
+**Implementation notes:**
+- **Category:** `tv` added to `DEFAULT_CATEGORIES` (label "TV Shows", 📺, accent `#fb7185` — a rose distinct from Movies' sky blue) in both `App.jsx` and the Settings copy, with a dedicated `ICONS.tv` (screen + antenna) for the nav. Its `PROGRESS_UNITS` (episodes) and `CATEGORY_VERBS` (Watching / Watched) entries were already seeded during 2.1/2.2, so progress chrome and per-category wording work with no further change.
+- **New-user vs existing-user:** added `mergeCategories(stored)` in `App.jsx` — it appends any newly-shipped default the user hasn't stored (preserving their order/color/enabled), so anyone who saved category settings before TV shipped still gets it. Wired into both places App reads `settings.categories`; Settings' `CategoriesSection` does the same reconcile so the toggle list shows TV too.
+- **Search:** `searchTv(query, tmdbKey)` in `electron/api.js` hits TMDB `/search/tv` and normalizes to the shared result shape (`name`→title, `first_air_date`→year, poster→cover, overview→description, rounded `vote_average`→score), reusing the existing `tmdbKey`. Wired through `api:searchTv` IPC (`ipc.js`), the `window.api.searchTv` preload bridge, and `SearchModal` (`API_LABELS`/`SOURCE_KEYS`/`KEY_HINTS`/`doApiSearch` all gain `tv` → TMDB, source key `tmdb`). Adds persist `source: 'tmdb'`, so release lookups work later.
+- **Release checker (stretch, done):** `getTvSeasons(tvId, tmdbKey)` fetches `/tv/{id}` and turns each season into a release candidate — composite `source_id` `"<showId>-s<N>"` (kept distinct from the show's own entry), title `"<Show> — Season N"`, skips the season-0 Specials bucket, poster falls back to the show poster, `unreleased` when a season has no `air_date`. Wired into `releaseChecker.js` (`searchFor`/`lookupFor`/`SOURCE_BY_CATEGORY`/notif defaults) and `SettingsPage` notification categories. The existing `isNoteworthy` filter drops deep back-catalog seasons, so only upcoming/recent seasons surface.
+
+**Verification:** `npm test` → **95/95 pass** (+14: 6 `searchTv` — endpoint, field mapping, null-poster, NO_TOKEN, API error; 4 `getTvSeasons` — season mapping with specials skipped + poster fallback + unreleased, empty-seasons, NO_TOKEN, API error; 4 `mergeCategories` — defaults fallback, legacy-list append, preserve user choices, no-dupe). `vite build` clean; better-sqlite3 rebuilt for the Electron ABI. GUI not driven headlessly; wiring mirrors the proven Movies path.
 
 ### 4.2 Manga category — ⬜ Not started `P2`
 
@@ -369,3 +377,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-22 | 3.1 Stats / Insights page (KPIs, per-year bars, rating histogram, per-category averages) |
 | 2026-07-22 | 3.2 Export & backup (JSON/CSV export, online-backup, defensive restore) — 76/76 tests |
 | 2026-07-23 | 3.3 Import (Chronicle JSON, series remap by name, merge-skips-dupes) — **Milestone 3 complete** — 81/81 tests |
+| 2026-07-24 | 4.1 TV Shows category (TMDB `searchTv` + season-based release detection, `mergeCategories` for existing users) — 95/95 tests |

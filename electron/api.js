@@ -99,6 +99,22 @@ async function searchMovies(query, tmdbKey) {
   }))
 }
 
+async function searchTv(query, tmdbKey) {
+  if (!tmdbKey) return { error: 'NO_TOKEN' }
+  const url = `https://api.themoviedb.org/3/search/tv?api_key=${encodeURIComponent(tmdbKey)}&query=${encodeURIComponent(query)}&language=en-US&page=1`
+  const res = await fetch(url)
+  const json = await res.json()
+  if (json.status_code) return { error: json.status_message }
+  return (json.results ?? []).slice(0, 20).map(t => ({
+    id:          t.id,
+    title:       t.name ?? '',
+    cover:       t.poster_path ? `https://image.tmdb.org/t/p/w185${t.poster_path}` : '',
+    description: t.overview?.slice(0, 300) ?? '',
+    year:        t.first_air_date?.slice(0, 4) ?? '',
+    score:       t.vote_average ? Math.round(t.vote_average) : null,
+  }))
+}
+
 async function searchGames(query, rawgKey) {
   if (!rawgKey) return { error: 'NO_TOKEN' }
   const url = `https://api.rawg.io/api/games?key=${encodeURIComponent(rawgKey)}&search=${encodeURIComponent(query)}&page_size=20`
@@ -199,6 +215,33 @@ async function getMovieCollection(movieId, tmdbKey) {
   }
 }
 
+async function getTvSeasons(tvId, tmdbKey) {
+  if (!tmdbKey) return { error: 'NO_TOKEN' }
+  try {
+    const detail = await fetch(
+      `https://api.themoviedb.org/3/tv/${encodeURIComponent(tvId)}?api_key=${encodeURIComponent(tmdbKey)}&language=en-US`
+    ).then(r => r.json())
+    if (detail.status_code) return { error: detail.status_message }
+    const showName = detail.name ?? 'Untitled'
+    // Each season is a release candidate; season 0 is TMDB's "Specials" bucket, skip it.
+    // Composite source_id (showId-sN) keeps seasons distinct from the show's own entry.
+    return (detail.seasons ?? [])
+      .filter(s => (s.season_number ?? 0) > 0)
+      .map(s => ({
+        source_id:    `${tvId}-s${s.season_number}`,
+        title:        `${showName} — ${s.name || `Season ${s.season_number}`}`,
+        cover_url:    s.poster_path
+          ? `https://image.tmdb.org/t/p/w185${s.poster_path}`
+          : (detail.poster_path ? `https://image.tmdb.org/t/p/w185${detail.poster_path}` : null),
+        release_date: s.air_date || null,
+        relation:     'New season',
+        unreleased:   !s.air_date,
+      }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
 async function getGameSeries(gameId, rawgKey) {
   if (!rawgKey) return { error: 'NO_TOKEN' }
   try {
@@ -272,6 +315,6 @@ async function getBookSeries(bookId, rawToken) {
 }
 
 module.exports = {
-  searchBooks, searchAnime, searchMovies, searchGames,
-  getAnimeRelations, getMovieCollection, getGameSeries, getBookSeries,
+  searchBooks, searchAnime, searchMovies, searchTv, searchGames,
+  getAnimeRelations, getMovieCollection, getTvSeasons, getGameSeries, getBookSeries,
 }

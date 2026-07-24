@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { searchBooks, searchAnime, searchMovies, searchGames } from '../../electron/api.js'
+import { searchBooks, searchAnime, searchMovies, searchTv, searchGames, getTvSeasons } from '../../electron/api.js'
 
 // ── searchBooks ────────────────────────────────────────────────────────────────
 
@@ -235,6 +235,126 @@ describe('searchMovies', () => {
       json: async () => ({ status_code: 7, status_message: 'Invalid API key.' }),
     }))
     expect(await searchMovies('dune', 'bad-key')).toEqual({ error: 'Invalid API key.' })
+  })
+})
+
+// ── searchTv ───────────────────────────────────────────────────────────────────
+
+describe('searchTv', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('returns NO_TOKEN error when key is null', async () => {
+    expect(await searchTv('severance', null)).toEqual({ error: 'NO_TOKEN' })
+  })
+
+  it('returns NO_TOKEN error when key is empty string', async () => {
+    expect(await searchTv('severance', '')).toEqual({ error: 'NO_TOKEN' })
+  })
+
+  it('hits the TMDB /search/tv endpoint', async () => {
+    let calledUrl
+    vi.stubGlobal('fetch', async (url) => {
+      calledUrl = url
+      return { json: async () => ({ results: [] }) }
+    })
+    await searchTv('severance', 'valid-key')
+    expect(calledUrl).toContain('/search/tv')
+    expect(calledUrl).toContain('query=severance')
+  })
+
+  it('maps TMDB TV results to entry objects (name→title, first_air_date→year)', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({
+        results: [{
+          id: 95396, name: 'Severance',
+          poster_path: '/lFf6LLrQjYldcZItzOkGmMMigP7.jpg',
+          overview: 'Mark leads a team whose memories are surgically divided.',
+          first_air_date: '2022-02-18',
+          vote_average: 8.4,
+        }],
+      }),
+    }))
+    const results = await searchTv('severance', 'valid-key')
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({
+      id: 95396,
+      title: 'Severance',
+      cover: 'https://image.tmdb.org/t/p/w185/lFf6LLrQjYldcZItzOkGmMMigP7.jpg',
+      description: 'Mark leads a team whose memories are surgically divided.',
+      year: '2022',
+      score: 8,
+    })
+  })
+
+  it('returns empty cover when poster_path is null', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({
+        results: [{ id: 1, name: 'X', poster_path: null, overview: '', first_air_date: '', vote_average: 0 }],
+      }),
+    }))
+    const results = await searchTv('x', 'valid-key')
+    expect(results[0].cover).toBe('')
+    expect(results[0].score).toBeNull()
+  })
+
+  it('returns API error message', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({ status_code: 7, status_message: 'Invalid API key.' }),
+    }))
+    expect(await searchTv('severance', 'bad-key')).toEqual({ error: 'Invalid API key.' })
+  })
+})
+
+// ── getTvSeasons ─────────────────────────────────────────────────────────────────
+
+describe('getTvSeasons', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('returns NO_TOKEN error when key is null', async () => {
+    expect(await getTvSeasons(95396, null)).toEqual({ error: 'NO_TOKEN' })
+  })
+
+  it('maps seasons to release candidates, skipping the specials bucket (season 0)', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({
+        name: 'Severance',
+        poster_path: '/show.jpg',
+        seasons: [
+          { season_number: 0, name: 'Specials', air_date: '2022-01-01', poster_path: '/s0.jpg' },
+          { season_number: 1, name: 'Season 1', air_date: '2022-02-18', poster_path: '/s1.jpg' },
+          { season_number: 2, name: 'Season 2', air_date: null, poster_path: null },
+        ],
+      }),
+    }))
+    const out = await getTvSeasons(95396, 'valid-key')
+    expect(out).toHaveLength(2)
+    expect(out[0]).toEqual({
+      source_id:    '95396-s1',
+      title:        'Severance — Season 1',
+      cover_url:    'https://image.tmdb.org/t/p/w185/s1.jpg',
+      release_date: '2022-02-18',
+      relation:     'New season',
+      unreleased:   false,
+    })
+    // Season 2 has no air date → unreleased, falls back to the show poster.
+    expect(out[1]).toMatchObject({
+      source_id:  '95396-s2',
+      cover_url:  'https://image.tmdb.org/t/p/w185/show.jpg',
+      release_date: null,
+      unreleased: true,
+    })
+  })
+
+  it('returns [] when the show has no seasons', async () => {
+    vi.stubGlobal('fetch', async () => ({ json: async () => ({ name: 'X' }) }))
+    expect(await getTvSeasons(1, 'valid-key')).toEqual([])
+  })
+
+  it('returns API error message', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({ status_code: 34, status_message: 'Not found.' }),
+    }))
+    expect(await getTvSeasons(999999, 'valid-key')).toEqual({ error: 'Not found.' })
   })
 })
 
