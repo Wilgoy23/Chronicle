@@ -8,6 +8,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const API_LABELS = {
   book:  'Hardcover',
   anime: 'AniList',
+  manga: 'AniList',
   movie: 'TMDB',
   tv:    'TMDB',
   game:  'RAWG',
@@ -17,6 +18,7 @@ const API_LABELS = {
 const SOURCE_KEYS = {
   book:  'hardcover',
   anime: 'anilist',
+  manga: 'anilist',
   movie: 'tmdb',
   tv:    'tmdb',
   game:  'rawg',
@@ -32,6 +34,7 @@ const KEY_HINTS = {
 async function doApiSearch(category, query) {
   if (category === 'book')  return window.api.searchBooks(query)
   if (category === 'anime') return window.api.searchAnime(query)
+  if (category === 'manga') return window.api.searchManga(query)
   if (category === 'movie') return window.api.searchMovies(query)
   if (category === 'tv')    return window.api.searchTv(query)
   if (category === 'game')  return window.api.searchGames(query)
@@ -106,7 +109,7 @@ export default function SearchModal({
       source_id: r.id ?? null,
       // Episode/chapter counts from the API seed the progress total.
       progress:       0,
-      progress_total: r.episodes ?? null,
+      progress_total: r.episodes ?? r.chapters ?? null,
     })
     if (entry?.error === 'DUPLICATE') return // already in library, button will show "In Library"
     setAddedIds(prev => new Set([...prev, r.id]))
@@ -193,9 +196,13 @@ export default function SearchModal({
                       {(r.author || r.genres) && (
                         <span className="search-modal-sub">{r.author || r.genres}</span>
                       )}
-                      {(r.episodes || r.year) && (
+                      {(r.episodes || r.chapters || r.year) && (
                         <span className="search-modal-meta">
-                          {[r.episodes && `${r.episodes} eps`, r.year].filter(Boolean).join(' · ')}
+                          {[
+                            r.episodes && `${r.episodes} eps`,
+                            r.chapters && `${r.chapters} ch`,
+                            r.year,
+                          ].filter(Boolean).join(' · ')}
                         </span>
                       )}
                     </div>

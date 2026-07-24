@@ -3,7 +3,7 @@ const {
   getEntries, addEntry, updateEntry, deleteEntry,
   getSeries, addSeries, deleteSeries, renameSeries,
 } = require('./db')
-const { searchBooks, searchAnime, searchMovies, searchTv, searchGames } = require('./api')
+const { searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames } = require('./api')
 
 function registerHandlers(readSettings) {
   ipcMain.handle('db:getEntries',    (_e, category) => getEntries(category))
@@ -20,6 +20,7 @@ function registerHandlers(readSettings) {
     return searchBooks(query, hardcoverToken)
   })
   ipcMain.handle('api:searchAnime',  (_e, query) => searchAnime(query))
+  ipcMain.handle('api:searchManga',  (_e, query) => searchManga(query))
   ipcMain.handle('api:searchMovies', async (_e, query) => {
     const { tmdbKey } = readSettings()
     return searchMovies(query, tmdbKey)

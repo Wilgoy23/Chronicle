@@ -6,7 +6,7 @@ const RECENT_DAYS = 400
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 const REQUEST_GAP_MS = 350
 
-const SOURCE_BY_CATEGORY = { book: 'hardcover', anime: 'anilist', movie: 'tmdb', tv: 'tmdb', game: 'rawg' }
+const SOURCE_BY_CATEGORY = { book: 'hardcover', anime: 'anilist', manga: 'anilist', movie: 'tmdb', tv: 'tmdb', game: 'rawg' }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 const norm  = (s) => (s ?? '').trim().toLowerCase()
@@ -23,6 +23,7 @@ function searchFor(category, query, settings) {
   const k = keysFor(category, settings)
   if (category === 'book')  return api.searchBooks(query, k.hardcoverToken)
   if (category === 'anime') return api.searchAnime(query)
+  if (category === 'manga') return api.searchManga(query)
   if (category === 'movie') return api.searchMovies(query, k.tmdbKey)
   if (category === 'tv')    return api.searchTv(query, k.tmdbKey)
   if (category === 'game')  return api.searchGames(query, k.rawgKey)
@@ -33,6 +34,7 @@ function lookupFor(category, sourceId, settings) {
   const k = keysFor(category, settings)
   if (category === 'book')  return api.getBookSeries(sourceId, k.hardcoverToken)
   if (category === 'anime') return api.getAnimeRelations(sourceId)
+  if (category === 'manga') return api.getMangaRelations(sourceId)
   if (category === 'movie') return api.getMovieCollection(sourceId, k.tmdbKey)
   if (category === 'tv')    return api.getTvSeasons(sourceId, k.tmdbKey)
   if (category === 'game')  return api.getGameSeries(sourceId, k.rawgKey)
@@ -52,7 +54,7 @@ function notifPrefs(settings) {
   const n = settings.notifications ?? {}
   return {
     enabled:    n.enabled !== false,
-    categories: n.categories ?? { book: true, anime: true, movie: true, tv: true, game: true },
+    categories: n.categories ?? { book: true, anime: true, manga: true, movie: true, tv: true, game: true },
     lastCheck:  n.lastCheck ?? null,
     linkedExisting: !!n.linkedExisting,
   }

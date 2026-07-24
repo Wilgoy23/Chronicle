@@ -83,6 +83,49 @@ async function searchAnime(query) {
   }))
 }
 
+async function searchManga(query) {
+  const gql = `
+    query ($search: String!) {
+      Page(page: 1, perPage: 20) {
+        media(search: $search, type: MANGA) {
+          id
+          title { romaji english }
+          coverImage { medium }
+          chapters
+          volumes
+          status
+          averageScore
+          description(asHtml: false)
+          genres
+          startDate { year }
+        }
+      }
+    }
+  `
+  const res = await fetch('https://graphql.anilist.co', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: gql, variables: { search: query } }),
+  })
+
+  const json = await res.json()
+  if (json.errors) return { error: json.errors[0].message }
+
+  return (json.data?.Page?.media ?? []).map(m => ({
+    id:          m.id,
+    title:       m.title.english || m.title.romaji,
+    titleRomaji: m.title.romaji,
+    cover:       m.coverImage?.medium ?? '',
+    chapters:    m.chapters,
+    volumes:     m.volumes,
+    status:      m.status,
+    score:       m.averageScore ? Math.round(m.averageScore / 10) : null,
+    description: m.description?.replace(/<[^>]*>/g, '').slice(0, 300) ?? '',
+    genres:      m.genres?.slice(0, 3).join(', ') ?? '',
+    year:        m.startDate?.year ?? null,
+  }))
+}
+
 async function searchMovies(query, tmdbKey) {
   if (!tmdbKey) return { error: 'NO_TOKEN' }
   const url = `https://api.themoviedb.org/3/search/movie?api_key=${encodeURIComponent(tmdbKey)}&query=${encodeURIComponent(query)}&language=en-US&page=1`
@@ -183,6 +226,52 @@ async function getAnimeRelations(mediaId) {
         cover_url:    e.node.coverImage?.medium ?? null,
         release_date: ymd(e.node.startDate),
         relation:     e.relationType === 'SEQUEL' ? 'New season / sequel' : 'Side story',
+        unreleased:   ['NOT_YET_RELEASED', 'RELEASING'].includes(e.node.status),
+      }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+async function getMangaRelations(mediaId) {
+  const gql = `
+    query ($id: Int!) {
+      Media(id: $id, type: MANGA) {
+        relations {
+          edges {
+            relationType
+            node {
+              id
+              type
+              format
+              status
+              title { romaji english }
+              coverImage { medium }
+              startDate { year month day }
+            }
+          }
+        }
+      }
+    }
+  `
+  try {
+    const res = await fetch('https://graphql.anilist.co', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: gql, variables: { id: Number(mediaId) } }),
+    })
+    const json = await res.json()
+    if (json.errors) return { error: json.errors[0].message }
+    const edges = json.data?.Media?.relations?.edges ?? []
+    return edges
+      .filter(e => ['SEQUEL', 'SIDE_STORY'].includes(e.relationType))
+      .filter(e => e.node?.type === 'MANGA')
+      .map(e => ({
+        source_id:    e.node.id,
+        title:        e.node.title?.english || e.node.title?.romaji || 'Untitled',
+        cover_url:    e.node.coverImage?.medium ?? null,
+        release_date: ymd(e.node.startDate),
+        relation:     e.relationType === 'SEQUEL' ? 'Sequel series' : 'Side story',
         unreleased:   ['NOT_YET_RELEASED', 'RELEASING'].includes(e.node.status),
       }))
   } catch (err) {
@@ -315,6 +404,6 @@ async function getBookSeries(bookId, rawToken) {
 }
 
 module.exports = {
-  searchBooks, searchAnime, searchMovies, searchTv, searchGames,
-  getAnimeRelations, getMovieCollection, getTvSeasons, getGameSeries, getBookSeries,
+  searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames,
+  getAnimeRelations, getMangaRelations, getMovieCollection, getTvSeasons, getGameSeries, getBookSeries,
 }

@@ -8,7 +8,7 @@ describe('mergeCategories', () => {
     expect(mergeCategories([])).toBe(DEFAULT_CATEGORIES)
   })
 
-  it('appends a newly-shipped default (TV Shows) to a legacy 4-category list', () => {
+  it('appends newly-shipped defaults (Manga, TV Shows) to a legacy 4-category list', () => {
     const legacy = [
       { id: 'book',  label: 'Books',  color: '#000', enabled: true },
       { id: 'anime', label: 'Anime',  color: '#111', enabled: false },
@@ -16,11 +16,11 @@ describe('mergeCategories', () => {
       { id: 'game',  label: 'Games',  color: '#333', enabled: true },
     ]
     const merged = mergeCategories(legacy)
-    expect(merged.map(c => c.id)).toEqual(['book', 'anime', 'movie', 'game', 'tv'])
-    // tv comes from defaults; everything else is the stored object untouched.
-    expect(merged.find(c => c.id === 'tv')).toEqual(
-      DEFAULT_CATEGORIES.find(c => c.id === 'tv'),
-    )
+    // Stored order is preserved; missing defaults append in DEFAULT_CATEGORIES order.
+    expect(merged.map(c => c.id)).toEqual(['book', 'anime', 'movie', 'game', 'manga', 'tv'])
+    // The appended ones come straight from defaults, untouched.
+    expect(merged.find(c => c.id === 'tv')).toEqual(DEFAULT_CATEGORIES.find(c => c.id === 'tv'))
+    expect(merged.find(c => c.id === 'manga')).toEqual(DEFAULT_CATEGORIES.find(c => c.id === 'manga'))
   })
 
   it("preserves the user's stored color and enabled choices", () => {

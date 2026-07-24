@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { searchBooks, searchAnime, searchMovies, searchTv, searchGames, getTvSeasons } from '../../electron/api.js'
+import { searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames, getTvSeasons, getMangaRelations } from '../../electron/api.js'
 
 // ── searchBooks ────────────────────────────────────────────────────────────────
 
@@ -180,6 +180,129 @@ describe('searchAnime', () => {
       json: async () => ({ errors: [{ message: 'Rate limited' }] }),
     }))
     expect(await searchAnime('test')).toEqual({ error: 'Rate limited' })
+  })
+})
+
+// ── searchManga ──────────────────────────────────────────────────────────────────
+
+describe('searchManga', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('queries AniList with type MANGA', async () => {
+    let body
+    vi.stubGlobal('fetch', async (_url, opts) => {
+      body = JSON.parse(opts.body)
+      return { json: async () => ({ data: { Page: { media: [] } } }) }
+    })
+    await searchManga('berserk')
+    expect(body.query).toContain('type: MANGA')
+    expect(body.variables).toEqual({ search: 'berserk' })
+  })
+
+  it('maps results, preferring English title and capturing chapters/volumes', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({
+        data: {
+          Page: {
+            media: [{
+              id: 30002,
+              title: { english: 'Berserk', romaji: 'Berserk' },
+              coverImage: { medium: 'https://example.com/berserk.jpg' },
+              chapters: 364, volumes: 41, status: 'RELEASING', averageScore: 93,
+              description: 'A wandering swordsman.',
+              genres: ['Action', 'Adventure', 'Drama', 'Horror'],
+              startDate: { year: 1989 },
+            }],
+          },
+        },
+      }),
+    }))
+    const results = await searchManga('berserk')
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({
+      id: 30002, title: 'Berserk', titleRomaji: 'Berserk',
+      cover: 'https://example.com/berserk.jpg', chapters: 364, volumes: 41,
+      status: 'RELEASING', score: 9, description: 'A wandering swordsman.',
+      genres: 'Action, Adventure, Drama', year: 1989,
+    })
+  })
+
+  it('falls back to romaji title and tolerates null chapters/score', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({
+        data: {
+          Page: {
+            media: [{
+              id: 1, title: { english: null, romaji: 'Vagabond' },
+              coverImage: { medium: '' }, chapters: null, volumes: null,
+              status: 'HIATUS', averageScore: null, description: '', genres: [],
+              startDate: { year: null },
+            }],
+          },
+        },
+      }),
+    }))
+    const results = await searchManga('vagabond')
+    expect(results[0].title).toBe('Vagabond')
+    expect(results[0].chapters).toBeNull()
+    expect(results[0].score).toBeNull()
+    expect(results[0].year).toBeNull()
+  })
+
+  it('returns error from GraphQL errors array', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({ errors: [{ message: 'Rate limited' }] }),
+    }))
+    expect(await searchManga('x')).toEqual({ error: 'Rate limited' })
+  })
+})
+
+// ── getMangaRelations ────────────────────────────────────────────────────────────
+
+describe('getMangaRelations', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('keeps only MANGA sequels/side stories and maps them to candidates', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({
+        data: {
+          Media: {
+            relations: {
+              edges: [
+                { relationType: 'SEQUEL', node: { id: 2, type: 'MANGA', status: 'RELEASING',
+                  title: { english: 'Sequel', romaji: 'Zoku' }, coverImage: { medium: 'c.jpg' },
+                  startDate: { year: 2020, month: 3, day: 1 } } },
+                { relationType: 'SIDE_STORY', node: { id: 3, type: 'MANGA', status: 'FINISHED',
+                  title: { english: null, romaji: 'Gaiden' }, coverImage: { medium: null },
+                  startDate: { year: 2018, month: null, day: null } } },
+                // Filtered out: an anime adaptation and an unrelated relation type.
+                { relationType: 'ADAPTATION', node: { id: 4, type: 'ANIME', status: 'FINISHED',
+                  title: { romaji: 'The Anime' }, coverImage: { medium: '' }, startDate: {} } },
+                { relationType: 'SEQUEL', node: { id: 5, type: 'ANIME', status: 'RELEASING',
+                  title: { romaji: 'Anime Sequel' }, coverImage: { medium: '' }, startDate: { year: 2021 } } },
+              ],
+            },
+          },
+        },
+      }),
+    }))
+    const out = await getMangaRelations(1)
+    expect(out).toHaveLength(2)
+    expect(out[0]).toEqual({
+      source_id: 2, title: 'Sequel', cover_url: 'c.jpg',
+      release_date: '2020-03-01', relation: 'Sequel series', unreleased: true,
+    })
+    expect(out[1]).toMatchObject({
+      source_id: 3, title: 'Gaiden', cover_url: null,
+      release_date: '2018-01-01', relation: 'Side story', unreleased: false,
+    })
+  })
+
+  it('returns error from GraphQL errors array', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      json: async () => ({ errors: [{ message: 'Bad request' }] }),
+    }))
+    expect(await getMangaRelations(1)).toEqual({ error: 'Bad request' })
   })
 })
 

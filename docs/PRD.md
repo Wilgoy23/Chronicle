@@ -29,7 +29,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 3.2 | Export & backup | M3 | P0 | ✅ |
 | 3.3 | Import (CSV/JSON) | M3 | P2 | ✅ |
 | 4.1 | TV Shows category | M4 | P1 | ✅ |
-| 4.2 | Manga category | M4 | P2 | ⬜ |
+| 4.2 | Manga category | M4 | P2 | ✅ |
 | 4.3 | Fully custom categories | M4 | P2 | ⬜ |
 | 5.1 | Series rename UI | M5 | P1 | ⬜ |
 | 5.2 | Re-watch / re-read logs | M5 | P2 | ⬜ |
@@ -288,12 +288,22 @@ TMDB (already integrated for movies) has a TV search endpoint — mostly wiring.
 
 **Verification:** `npm test` → **95/95 pass** (+14: 6 `searchTv` — endpoint, field mapping, null-poster, NO_TOKEN, API error; 4 `getTvSeasons` — season mapping with specials skipped + poster fallback + unreleased, empty-seasons, NO_TOKEN, API error; 4 `mergeCategories` — defaults fallback, legacy-list append, preserve user choices, no-dupe). `vite build` clean; better-sqlite3 rebuilt for the Electron ABI. GUI not driven headlessly; wiring mirrors the proven Movies path.
 
-### 4.2 Manga category — ⬜ Not started `P2`
+### 4.2 Manga category — ✅ Done `P2`
 
 AniList (already integrated) supports manga with the same GraphQL API — near-free.
 
-- [ ] New category `manga`; `searchManga` with `type: MANGA`
-- [ ] Chapter/volume totals feed progress tracking (2.1)
+- [x] New category `manga`; `searchManga` with `type: MANGA`
+- [x] Chapter/volume totals feed progress tracking (2.1)
+
+**Acceptance:** can search, add, and track a manga end-to-end via AniList (no key required). ✅
+
+**Implementation notes:**
+- **Category:** `manga` added to `DEFAULT_CATEGORIES` (label "Manga", 📚, accent teal `#2dd4bf`, placed after Anime since both are AniList) in `App.jsx` and the Settings copy, with a dedicated `ICONS.manga` (a bound volume, distinct from Books' open-book). Its `PROGRESS_UNITS` (chapters) and `CATEGORY_VERBS` (Reading / Read) entries were already seeded in 2.1/2.2. `mergeCategories` (from 4.1) surfaces it for existing users automatically.
+- **Search:** `searchManga(query)` in `electron/api.js` runs the AniList query with `type: MANGA` — **no API key needed**, mirroring `searchAnime`. It returns `chapters` and `volumes` alongside the shared result shape (English title preferred, romaji fallback, score /10, HTML stripped from description, `startDate.year`). Wired through `api:searchManga` IPC, `window.api.searchManga` preload, and `SearchModal` (`API_LABELS`/`SOURCE_KEYS`/`doApiSearch` → AniList, source key `anilist`; no `KEY_HINTS` entry since AniList is keyless).
+- **Progress synergy (2.1):** `SearchModal`'s add now seeds `progress_total` from `r.episodes ?? r.chapters ?? null`, so an added manga carries its chapter count into the same progress bar / +1 flow the other categories use; the result row shows a "`N ch`" meta chip.
+- **Release checker:** `getMangaRelations(mediaId)` queries AniList `Media(type: MANGA)` relations, keeps `SEQUEL`/`SIDE_STORY` edges of `type === 'MANGA'` (filtering out anime adaptations), and maps them to candidates (`Sequel series` / `Side story`, `unreleased` when RELEASING/NOT_YET_RELEASED). Wired into `releaseChecker.js` (`searchFor`/`lookupFor`/`SOURCE_BY_CATEGORY`/notif defaults) and the Settings notification categories.
+
+**Verification:** `npm test` → **101/101 pass** (+6: 4 `searchManga` — type-MANGA query, field/chapter/volume mapping, romaji fallback with null tolerance, GraphQL error; 2 `getMangaRelations` — MANGA-only sequel/side-story filtering + date mapping, GraphQL error). `vite build` clean; better-sqlite3 rebuilt for the Electron ABI. GUI not driven headlessly; wiring mirrors the proven Anime path.
 
 ### 4.3 Fully custom categories — ⬜ Not started `P2`
 
@@ -378,3 +388,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-22 | 3.2 Export & backup (JSON/CSV export, online-backup, defensive restore) — 76/76 tests |
 | 2026-07-23 | 3.3 Import (Chronicle JSON, series remap by name, merge-skips-dupes) — **Milestone 3 complete** — 81/81 tests |
 | 2026-07-24 | 4.1 TV Shows category (TMDB `searchTv` + season-based release detection, `mergeCategories` for existing users) — 95/95 tests |
+| 2026-07-24 | 4.2 Manga category (AniList `searchManga` type:MANGA, chapter totals → progress, `getMangaRelations`) — 101/101 tests |

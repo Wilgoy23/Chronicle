@@ -13,6 +13,7 @@ import InsightsPage from './components/InsightsPage'
 export const DEFAULT_CATEGORIES = [
   { id: 'book',  label: 'Books',    icon: '📖', color: '#e8a838', enabled: true },
   { id: 'anime', label: 'Anime',    icon: '⛩',  color: '#c084fc', enabled: true },
+  { id: 'manga', label: 'Manga',    icon: '📚', color: '#2dd4bf', enabled: true },
   { id: 'movie', label: 'Movies',   icon: '🎬', color: '#38bdf8', enabled: true },
   { id: 'tv',    label: 'TV Shows', icon: '📺', color: '#fb7185', enabled: true },
   { id: 'game',  label: 'Games',    icon: '🎮', color: '#4ade80', enabled: true },
@@ -31,6 +32,7 @@ const S = 15
 const ICONS = {
   book:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
   anime:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>,
+  manga:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M4 18a2 2 0 0 1 2-2h12"/><line x1="8" y1="7" x2="14" y2="7"/></svg>,
   movie:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>,
   tv:       <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="13" rx="2"/><polyline points="7 3 12 7 17 3"/></svg>,
   game:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15.5" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>,
@@ -45,6 +47,13 @@ const ICONS = {
   search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
   sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
   insights: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="21" x2="21" y2="21"/><rect x="5" y="11" width="3.4" height="7"/><rect x="10.3" y="6" width="3.4" height="12"/><rect x="15.6" y="14" width="3.4" height="4"/></svg>,
+  fallback: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>,
+}
+
+// Categories whose id has no entry in ICONS (e.g. leftover custom categories
+// from a removed feature) fall back to a generic bookmark instead of rendering blank.
+function catIcon(id) {
+  return ICONS[id] ?? ICONS.fallback
 }
 
 export const STATUS_LABELS = {
@@ -436,7 +445,7 @@ export default function App() {
                     onClick={() => handleCategoryClick(cat.id)}
                     title={cat.label}
                   >
-                    <span className="nav-icon">{ICONS[cat.id]}</span>
+                    <span className="nav-icon">{catIcon(cat.id)}</span>
                     <span className="nav-label">{cat.label}</span>
                     {isActive && entries.length > 0 && (
                       <span className="nav-count">{entries.length}</span>
@@ -472,7 +481,7 @@ export default function App() {
         {page === 'collection' && (
           <aside className="series-sidebar" style={{ '--accent': activeCat?.color }}>
             <div className="series-sidebar-header">
-              <span className="series-sidebar-icon">{ICONS[activeCat?.id]}</span>
+              <span className="series-sidebar-icon">{catIcon(activeCat?.id)}</span>
               <span className="series-sidebar-title">{activeCat?.label}</span>
             </div>
 
@@ -578,7 +587,7 @@ export default function App() {
               <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
                 {ICONS.menu}
               </button>
-              <span className="topbar-icon">{ICONS[activeCat?.id]}</span>
+              <span className="topbar-icon">{catIcon(activeCat?.id)}</span>
               <h1>{activeCat?.label}</h1>
               <span className="topbar-count">{entries.length}</span>
             </div>
