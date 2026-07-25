@@ -167,6 +167,12 @@ body {
 .nav-item.active .nav-icon,
 .nav-item:hover .nav-icon { opacity: 1; }
 
+/* Emoji glyph for custom categories, sized to match each icon slot. */
+.nav-emoji { line-height: 1; display: inline-flex; }
+.nav-icon .nav-emoji            { font-size: 14px; }
+.series-sidebar-icon .nav-emoji { font-size: 15px; }
+.topbar-icon .nav-emoji         { font-size: 17px; }
+
 .nav-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1978,6 +1984,69 @@ body {
   padding: 2px;
   width: 36px;
 }
+
+.cat-row-controls { align-items: center; display: flex; gap: 0.6rem; }
+
+.cat-custom-tag {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  padding: 1px 5px;
+  text-transform: uppercase;
+}
+
+.cat-delete-btn {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.55;
+  padding: 4px 6px;
+  transition: opacity 0.15s, background 0.15s;
+}
+.cat-delete-btn:hover { background: rgba(248,113,113,0.14); opacity: 1; }
+
+/* Add-a-category form */
+.cat-add { border-top: 1px solid var(--border); margin-top: 1.5rem; padding-top: 1.25rem; }
+.cat-add h3 { font-size: 0.95rem; margin: 0 0 0.35rem; }
+
+.cat-emoji-grid {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(8, 1fr);
+  margin: 0.75rem 0;
+  max-width: 380px;
+}
+.cat-emoji {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  font-size: 1.05rem;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cat-emoji:hover { background: var(--surface2); border-color: var(--border2); }
+.cat-emoji.active { border-color: var(--accent, #a78bfa); box-shadow: 0 0 0 1px var(--accent, #a78bfa); }
+
+.cat-add-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  max-width: 480px;
+}
+.cat-add-row .setting-input { flex: 1; min-width: 160px; }
+
+.settings-hint-inline { color: var(--text-dim); font-size: 0.75rem; margin-top: 0.6rem; }
 
 .data-stats { display: flex; flex-wrap: wrap; gap: 0.65rem; }
 

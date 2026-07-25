@@ -50,10 +50,34 @@ const ICONS = {
   fallback: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>,
 }
 
-// Categories whose id has no entry in ICONS (e.g. leftover custom categories
-// from a removed feature) fall back to a generic bookmark instead of rendering blank.
-function catIcon(id) {
-  return ICONS[id] ?? ICONS.fallback
+// Built-in categories backed by an external search source. Every other
+// category (user-created) skips the search modal and adds entries manually.
+const SEARCH_SOURCES = new Set(['book', 'anime', 'manga', 'movie', 'tv', 'game'])
+
+export function categoryHasSearch(cat) {
+  return !!cat && SEARCH_SOURCES.has(cat.id)
+}
+
+// Build a user-created category. Custom ids never collide with the built-in
+// ones (book/anime/…) so ICONS lookups miss and the chosen emoji is used.
+export function createCustomCategory({ name, icon, color }) {
+  return {
+    id:      `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    label:   (name ?? '').trim(),
+    icon:    icon || '🏷',
+    color:   color || '#a78bfa',
+    enabled: true,
+    custom:  true,
+  }
+}
+
+// Nav glyph for a category: the hand-drawn SVG for a known built-in id,
+// otherwise the category's own emoji, falling back to a generic bookmark.
+function catGlyph(cat) {
+  if (!cat) return ICONS.fallback
+  if (ICONS[cat.id]) return ICONS[cat.id]
+  if (cat.icon) return <span className="nav-emoji" aria-hidden="true">{cat.icon}</span>
+  return ICONS.fallback
 }
 
 export const STATUS_LABELS = {
@@ -389,7 +413,8 @@ export default function App() {
     const created = await window.db.addSeries(activeCat.id, trimmed)
     refreshSeriesList()
     setPendingSeriesId(created.id)
-    setSearchOpen(true)
+    if (categoryHasSearch(activeCat)) setSearchOpen(true)
+    else setManualOpen(true)
     setShowNewSeriesInput(false)
     setNewSeriesName('')
   }
@@ -407,9 +432,12 @@ export default function App() {
     setSeriesToDelete(null)
   }
 
+  // Built-in categories open the external search modal; custom categories have
+  // no search source, so Add Entry goes straight to the manual panel.
   function openAdd() {
     setPendingSeriesId(null)
-    setSearchOpen(true)
+    if (categoryHasSearch(activeCat)) setSearchOpen(true)
+    else setManualOpen(true)
   }
 
   function handleSettingsReturn() {
@@ -445,7 +473,7 @@ export default function App() {
                     onClick={() => handleCategoryClick(cat.id)}
                     title={cat.label}
                   >
-                    <span className="nav-icon">{catIcon(cat.id)}</span>
+                    <span className="nav-icon">{catGlyph(cat)}</span>
                     <span className="nav-label">{cat.label}</span>
                     {isActive && entries.length > 0 && (
                       <span className="nav-count">{entries.length}</span>
@@ -481,7 +509,7 @@ export default function App() {
         {page === 'collection' && (
           <aside className="series-sidebar" style={{ '--accent': activeCat?.color }}>
             <div className="series-sidebar-header">
-              <span className="series-sidebar-icon">{catIcon(activeCat?.id)}</span>
+              <span className="series-sidebar-icon">{catGlyph(activeCat)}</span>
               <span className="series-sidebar-title">{activeCat?.label}</span>
             </div>
 
@@ -587,7 +615,7 @@ export default function App() {
               <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
                 {ICONS.menu}
               </button>
-              <span className="topbar-icon">{catIcon(activeCat?.id)}</span>
+              <span className="topbar-icon">{catGlyph(activeCat)}</span>
               <h1>{activeCat?.label}</h1>
               <span className="topbar-count">{entries.length}</span>
             </div>

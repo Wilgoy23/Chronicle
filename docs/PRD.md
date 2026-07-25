@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-24
+> Last updated: 2026-07-25
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -30,7 +30,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 3.3 | Import (CSV/JSON) | M3 | P2 | ✅ |
 | 4.1 | TV Shows category | M4 | P1 | ✅ |
 | 4.2 | Manga category | M4 | P2 | ✅ |
-| 4.3 | Fully custom categories | M4 | P2 | ⬜ |
+| 4.3 | Fully custom categories | M4 | P2 | ✅ |
 | 5.1 | Series rename UI | M5 | P1 | ⬜ |
 | 5.2 | Re-watch / re-read logs | M5 | P2 | ⬜ |
 | 5.3 | Release inbox polish | M5 | P2 | ⬜ |
@@ -305,15 +305,26 @@ AniList (already integrated) supports manga with the same GraphQL API — near-f
 
 **Verification:** `npm test` → **101/101 pass** (+6: 4 `searchManga` — type-MANGA query, field/chapter/volume mapping, romaji fallback with null tolerance, GraphQL error; 2 `getMangaRelations` — MANGA-only sequel/side-story filtering + date mapping, GraphQL error). `vite build` clean; better-sqlite3 rebuilt for the Electron ABI. GUI not driven headlessly; wiring mirrors the proven Anime path.
 
-### 4.3 Fully custom categories — ⬜ Not started `P2`
+### 4.3 Fully custom categories — ✅ Done `P2`
 
-Settings currently only toggles/recolors the four hardcoded categories; `ICONS` in `App.jsx` is keyed to their IDs.
+Settings previously only toggled/recolored the hardcoded categories; `ICONS` in `App.jsx` is keyed to their IDs.
 
 **Requirements**
-- [ ] "Add category" in Settings: name, color, icon (curated icon set or emoji picker)
-- [ ] Custom categories have no API search — Add Entry goes straight to the manual panel
-- [ ] Deleting a custom category prompts for what happens to its entries
-- [ ] Nav icons resolve dynamically (fallback icon for unknown IDs)
+- [x] "Add category" in Settings: name, color, icon (curated icon set or emoji picker)
+- [x] Custom categories have no API search — Add Entry goes straight to the manual panel
+- [x] Deleting a custom category prompts for what happens to its entries
+- [x] Nav icons resolve dynamically (fallback icon for unknown IDs)
+
+**Acceptance:** a user can create a custom category (e.g. "Vinyl 🎵"), add & track entries in it manually, and delete it with a clear prompt — with no code changes. ✅
+
+**Implementation notes:**
+- **Add category (Settings → Categories):** a new "Add a category" form with a curated 24-emoji picker grid, a name field (24-char cap), and a color swatch. `createCustomCategory({ name, icon, color })` (exported from `App.jsx`) mints the record — a namespaced `custom-<base36ts>-<rand>` id (never collides with a built-in id, so ICONS lookups miss and the emoji is used), `custom: true`, trimmed label, and `🏷`/`#a78bfa` fallbacks. New categories append to the working list and persist on **Save Changes** (consistent with the existing toggle/color flow). `mergeCategories` already carries stored custom categories through unchanged for existing users.
+- **No API search:** `categoryHasSearch(cat)` (exported) is true only for the six search-backed built-ins (`SEARCH_SOURCES` set). `openAdd()` and the post-"New series" flow route custom categories straight to the manual `AddEntryPanel` instead of `SearchModal`; the release checker already no-ops for categories with no source, and manual entries carry no `source`, so custom categories are naturally excluded from release scans and the Notifications list.
+- **Dynamic nav icons:** `catGlyph(cat)` resolves the hand-drawn SVG for a known built-in id, else renders the category's chosen emoji (`.nav-emoji`, sized per slot — nav / series-sidebar / topbar), else a generic bookmark. Replaced the old id-only `catIcon` at all three glyph sites.
+- **Delete with prompt:** custom rows get a 🗑 button; clicking it counts the category's entries and opens a `ConfirmDialog` that spells out the consequence ("permanently delete the category and its N entries" / "no entries — remove it?"). Confirming deletes those entries from the DB and commits the category removal immediately (destructive, so it doesn't wait on Save Changes). Built-in categories have no delete affordance — they can only be toggled/recolored.
+- Active-category safety: if the currently-selected category is deleted while in Settings, `App`'s `activeCat` falls back to the first visible category on return (no crash).
+
+**Verification:** `npm test` → **108/108 pass** (+7: 3 `categoryHasSearch` — built-ins true, custom/unknown false, nullish false; 4 `createCustomCategory` — namespaced-id/trimmed-label/custom-flag shape, glyph+color fallbacks, no-search + survives `mergeCategories`, unique ids across 50 calls). `vite build` clean; better-sqlite3 rebuilt for the Electron ABI. GUI not driven headlessly; the manual-add path and Settings form reuse proven components (`AddEntryPanel`, `ConfirmDialog`).
 
 ---
 
@@ -389,3 +400,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-23 | 3.3 Import (Chronicle JSON, series remap by name, merge-skips-dupes) — **Milestone 3 complete** — 81/81 tests |
 | 2026-07-24 | 4.1 TV Shows category (TMDB `searchTv` + season-based release detection, `mergeCategories` for existing users) — 95/95 tests |
 | 2026-07-24 | 4.2 Manga category (AniList `searchManga` type:MANGA, chapter totals → progress, `getMangaRelations`) — 101/101 tests |
+| 2026-07-25 | 4.3 Fully custom categories (Settings add/delete with emoji picker, manual-only add, dynamic nav glyphs) — **Milestone 4 complete** — 108/108 tests |

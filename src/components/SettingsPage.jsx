@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { createCustomCategory } from '../App'
+import ConfirmDialog from './ConfirmDialog'
 
 const SECTIONS = [
   { id: 'api',           label: 'API Keys',      icon: '🔑' },
@@ -127,22 +129,37 @@ function ApiSection({ settings, onSave }) {
 }
 
 // ── Categories ─────────────────────────────────────
-function CategoriesSection({ settings, onSave }) {
-  const DEFAULT_CATEGORIES = [
-    { id: 'book',  label: 'Books',    icon: '📖', color: '#e8a838', enabled: true },
-    { id: 'anime', label: 'Anime',    icon: '⛩',  color: '#c084fc', enabled: true },
-    { id: 'manga', label: 'Manga',    icon: '📚', color: '#2dd4bf', enabled: true },
-    { id: 'movie', label: 'Movies',   icon: '🎬', color: '#38bdf8', enabled: true },
-    { id: 'tv',    label: 'TV Shows', icon: '📺', color: '#fb7185', enabled: true },
-    { id: 'game',  label: 'Games',    icon: '🎮', color: '#4ade80', enabled: true },
-  ]
+const DEFAULT_CATEGORIES = [
+  { id: 'book',  label: 'Books',    icon: '📖', color: '#e8a838', enabled: true },
+  { id: 'anime', label: 'Anime',    icon: '⛩',  color: '#c084fc', enabled: true },
+  { id: 'manga', label: 'Manga',    icon: '📚', color: '#2dd4bf', enabled: true },
+  { id: 'movie', label: 'Movies',   icon: '🎬', color: '#38bdf8', enabled: true },
+  { id: 'tv',    label: 'TV Shows', icon: '📺', color: '#fb7185', enabled: true },
+  { id: 'game',  label: 'Games',    icon: '🎮', color: '#4ade80', enabled: true },
+]
+const BUILTIN_IDS = new Set(DEFAULT_CATEGORIES.map(c => c.id))
 
-  // Append any newly-shipped default categories (e.g. TV Shows) to a stored list.
+// Curated glyphs for custom categories — enough variety to cover common media
+// without pulling in a full emoji-picker dependency.
+const CATEGORY_EMOJI = [
+  '🏷', '🎵', '🎧', '🎙', '🎨', '📷', '🎭', '🃏',
+  '🧩', '🎲', '🏀', '⚽', '🏋', '🍳', '✈', '🧵',
+  '🌱', '🔬', '💻', '📰', '🎯', '🐉', '🧸', '🗺',
+]
+
+function CategoriesSection({ settings, onSave }) {
+  // Append any newly-shipped default categories (e.g. TV Shows) to a stored list;
+  // custom categories the user added are already in `stored` and carry through.
   const stored = settings.categories
   const saved = stored?.length
     ? [...stored, ...DEFAULT_CATEGORIES.filter(d => !stored.some(c => c.id === d.id))]
     : DEFAULT_CATEGORIES
   const [cats, setCats] = useState(saved)
+
+  const [newName, setNewName]   = useState('')
+  const [newIcon, setNewIcon]   = useState(CATEGORY_EMOJI[0])
+  const [newColor, setNewColor] = useState('#a78bfa')
+  const [pendingDelete, setPendingDelete] = useState(null) // { id, label, count }
 
   function toggle(id) {
     setCats(prev => prev.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c))
@@ -152,43 +169,140 @@ function CategoriesSection({ settings, onSave }) {
     setCats(prev => prev.map(c => c.id === id ? { ...c, color } : c))
   }
 
+  function addCategory() {
+    const name = newName.trim()
+    if (!name) return
+    setCats(prev => [...prev, createCustomCategory({ name, icon: newIcon, color: newColor })])
+    setNewName('')
+    setNewIcon(CATEGORY_EMOJI[0])
+    setNewColor('#a78bfa')
+  }
+
+  // Ask before removing — surfacing how many entries would go with it.
+  async function requestDelete(cat) {
+    const entries = await window.db.getEntries(cat.id)
+    setPendingDelete({ id: cat.id, label: cat.label, count: entries.length })
+  }
+
+  // Deletion is destructive, so it commits immediately (unlike the deferred
+  // toggle/color edits). Entries in the category are removed with it.
+  async function confirmDelete() {
+    const { id } = pendingDelete
+    const entries = await window.db.getEntries(id)
+    await Promise.all(entries.map(e => window.db.deleteEntry(e.id)))
+    const next = cats.filter(c => c.id !== id)
+    setCats(next)
+    onSave({ categories: next })
+    setPendingDelete(null)
+  }
+
   return (
     <section className="settings-section">
       <h2>Categories</h2>
-      <p className="settings-desc">Show or hide categories in the sidebar.</p>
+      <p className="settings-desc">Show or hide categories in the sidebar, or add your own.</p>
 
       <div className="cat-list">
-        {cats.map(cat => (
-          <div key={cat.id} className="cat-row">
-            <label className="cat-toggle">
-              <input
-                type="checkbox"
-                checked={cat.enabled}
-                onChange={() => toggle(cat.id)}
-              />
-              <span className="cat-label">
-                <span>{cat.icon}</span>
-                <span>{cat.label}</span>
-              </span>
-            </label>
-            <div className="cat-color-wrap">
-              <span className="cat-color-label">Color</span>
-              <input
-                type="color"
-                value={cat.color}
-                onChange={e => setColor(cat.id, e.target.value)}
-                className="color-swatch"
-                title={`${cat.label} accent color`}
-              />
+        {cats.map(cat => {
+          const custom = !BUILTIN_IDS.has(cat.id)
+          return (
+            <div key={cat.id} className="cat-row">
+              <label className="cat-toggle">
+                <input
+                  type="checkbox"
+                  checked={cat.enabled}
+                  onChange={() => toggle(cat.id)}
+                />
+                <span className="cat-label">
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                  {custom && <span className="cat-custom-tag">custom</span>}
+                </span>
+              </label>
+              <div className="cat-row-controls">
+                <div className="cat-color-wrap">
+                  <span className="cat-color-label">Color</span>
+                  <input
+                    type="color"
+                    value={cat.color}
+                    onChange={e => setColor(cat.id, e.target.value)}
+                    className="color-swatch"
+                    title={`${cat.label} accent color`}
+                  />
+                </div>
+                {custom && (
+                  <button
+                    className="cat-delete-btn"
+                    onClick={() => requestDelete(cat)}
+                    title={`Delete ${cat.label}`}
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <button className="submit-btn" style={{ marginTop: '1rem', maxWidth: 160 }}
         onClick={() => onSave({ categories: cats })}>
         Save Changes
       </button>
+
+      <div className="cat-add">
+        <h3>Add a category</h3>
+        <p className="settings-desc">
+          Custom categories are tracked manually — Add Entry opens the manual form
+          instead of an online search.
+        </p>
+        <div className="cat-emoji-grid">
+          {CATEGORY_EMOJI.map(e => (
+            <button
+              key={e}
+              type="button"
+              className={`cat-emoji ${newIcon === e ? 'active' : ''}`}
+              onClick={() => setNewIcon(e)}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+        <div className="cat-add-row">
+          <input
+            className="setting-input"
+            placeholder="Category name…"
+            value={newName}
+            maxLength={24}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') addCategory() }}
+          />
+          <input
+            type="color"
+            value={newColor}
+            onChange={e => setNewColor(e.target.value)}
+            className="color-swatch"
+            title="Accent color"
+          />
+          <button className="submit-btn" style={{ maxWidth: 150 }} onClick={addCategory} disabled={!newName.trim()}>
+            Add category
+          </button>
+        </div>
+        <p className="settings-hint-inline">Remember to Save Changes above to keep new categories.</p>
+      </div>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title={`Delete "${pendingDelete?.label}"?`}
+        message={
+          pendingDelete?.count
+            ? `This will permanently delete the category and its ${pendingDelete.count} `
+              + `${pendingDelete.count === 1 ? 'entry' : 'entries'}.`
+            : 'This category has no entries. Remove it from the sidebar?'
+        }
+        confirmLabel={pendingDelete?.count ? `Delete category & ${pendingDelete.count} entries` : 'Remove category'}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </section>
   )
 }
