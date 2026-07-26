@@ -430,4 +430,19 @@ describe('renameSeries', () => {
     const [entry] = getEntries('book')
     expect(entry.series).toBe('New Name')
   })
+
+  it('trims surrounding whitespace from the new name', () => {
+    const s       = addSeries('book', 'Old Name')
+    const updated = renameSeries(s.id, '  Spaced Out  ')
+    expect(updated.name).toBe('Spaced Out')
+  })
+
+  it('renames only the target series, leaving siblings untouched', () => {
+    const a = addSeries('book', 'Alpha')
+    const b = addSeries('book', 'Beta')
+    renameSeries(a.id, 'Alpha Renamed')
+    const names = getSeries('book').map(s => s.name).sort()
+    expect(names).toEqual(['Alpha Renamed', 'Beta'])
+    expect(b.name).toBe('Beta')
+  })
 })

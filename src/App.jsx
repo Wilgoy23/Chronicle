@@ -43,6 +43,7 @@ const ICONS = {
   back:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
   menu:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   trash:    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+  pencil:   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>,
   bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
   sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
@@ -179,6 +180,8 @@ export default function App() {
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
   const [sidebarOpen, setSidebarOpen]         = useState(false)
   const [seriesToDelete, setSeriesToDelete]   = useState(null) // { id, name }
+  const [renamingSeriesId, setRenamingSeriesId] = useState(null) // series_id being renamed | null
+  const [renameValue, setRenameValue]         = useState('')
   const [releases, setReleases]       = useState([])
   const [unseenReleases, setUnseen]   = useState(0)
   const [releasesOpen, setReleasesOpen] = useState(false)
@@ -423,6 +426,30 @@ export default function App() {
     setSeriesToDelete({ id: seriesId, name })
   }
 
+  function startRenameSeries(series) {
+    setRenamingSeriesId(series.id)
+    setRenameValue(series.name)
+  }
+
+  function cancelRenameSeries() {
+    setRenamingSeriesId(null)
+    setRenameValue('')
+  }
+
+  async function commitRenameSeries(seriesId) {
+    const trimmed = renameValue.trim()
+    const current = seriesList.find(s => s.id === seriesId)
+    // Ignore empty names or no-op edits; just close the input.
+    if (!trimmed || (current && trimmed === current.name)) {
+      cancelRenameSeries()
+      return
+    }
+    const updated = await window.db.renameSeries(seriesId, trimmed)
+    setSeriesList(prev => prev.map(s => s.id === seriesId ? { ...s, name: updated.name } : s))
+    setEntries(prev => prev.map(e => e.series_id === seriesId ? { ...e, series: updated.name } : e))
+    cancelRenameSeries()
+  }
+
   async function confirmDeleteSeries() {
     const seriesId = seriesToDelete.id
     await window.db.deleteSeries(seriesId)
@@ -525,15 +552,40 @@ export default function App() {
 
               {seriesList.map(s => {
                 const count = entries.filter(e => e.series_id === s.id).length
+                if (renamingSeriesId === s.id) {
+                  return (
+                    <div className="sidebar-series-input-row" key={s.id}>
+                      <input
+                        autoFocus
+                        className="sidebar-series-input"
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={() => commitRenameSeries(s.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitRenameSeries(s.id)
+                          if (e.key === 'Escape') cancelRenameSeries()
+                        }}
+                      />
+                    </div>
+                  )
+                }
                 return (
                   <div className="sidebar-series-row" key={s.id}>
                     <button
                       className={`sidebar-series-item ${seriesFilter === s.id ? 'active' : ''}`}
                       onClick={() => toggleActiveSeriesFilter(s.id)}
+                      onDoubleClick={() => startRenameSeries(s)}
                     >
                       <span className="sidebar-series-dot" />
                       <span className="sidebar-series-name">{s.name}</span>
                       <span className="sidebar-series-count">{count}</span>
+                    </button>
+                    <button
+                      className="sidebar-series-rename"
+                      onClick={() => startRenameSeries(s)}
+                      title={`Rename ${s.name}`}
+                    >
+                      {ICONS.pencil}
                     </button>
                     <button
                       className="sidebar-series-delete"

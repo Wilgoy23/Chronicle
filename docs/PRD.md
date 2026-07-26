@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-25
+> Last updated: 2026-07-26
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -31,7 +31,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 4.1 | TV Shows category | M4 | P1 | ✅ |
 | 4.2 | Manga category | M4 | P2 | ✅ |
 | 4.3 | Fully custom categories | M4 | P2 | ✅ |
-| 5.1 | Series rename UI | M5 | P1 | ⬜ |
+| 5.1 | Series rename UI | M5 | P1 | ✅ |
 | 5.2 | Re-watch / re-read logs | M5 | P2 | ⬜ |
 | 5.3 | Release inbox polish | M5 | P2 | ⬜ |
 | 5.4 | Tags / genre chips | M5 | P2 | ⬜ |
@@ -330,12 +330,29 @@ Settings previously only toggled/recolored the hardcoded categories; `ICONS` in 
 
 ## Milestone 5 — Polish & power features
 
-### 5.1 Series rename UI — ⬜ Not started `P1`
+### 5.1 Series rename UI — ✅ Done `P1`
 
-`renameSeries` already exists in `electron/db.js` + IPC + preload but nothing in the UI calls it.
+`renameSeries` already existed in `electron/db.js` + IPC + preload; this task wires it to the UI.
 
-- [ ] Rename affordance on the series sidebar row and/or series card header (e.g. double-click or context menu)
-- [ ] Inline input with Enter/Escape, same pattern as "New series"
+- [x] Rename affordance on the series sidebar row (pencil button on hover **and** double-click the row)
+- [x] Inline input with Enter/Escape, same pattern as "New series"
+
+**Implementation notes.** Each series row in the series sidebar now shows a pencil
+button (`.sidebar-series-rename`) on hover, alongside the existing trash button;
+double-clicking the row name also enters rename mode (`onDoubleClick` → `startRenameSeries`).
+While renaming, the row is replaced by an autofocused inline input reusing the
+existing `.sidebar-series-input-row` styling from "New series." **Enter** commits
+(`commitRenameSeries`), **Escape** cancels (`cancelRenameSeries`), and **blur** commits
+so clicking away saves. `commitRenameSeries` trims the value and no-ops on an empty
+or unchanged name (just closing the input); otherwise it calls
+`window.db.renameSeries`, then optimistically updates both the `seriesList` (sidebar)
+and the `series` name carried on affected `entries` so the grouped series-card header
+re-labels immediately without a refetch. A new `ICONS.pencil` glyph was added.
+
+**Verification.** `vite build` clean (207.39 kB bundle); `npm test` 110/110 pass
+(added db tests: rename trims whitespace, and rename touches only the target series;
+existing tests already covered the name update + JOIN reflection). better-sqlite3
+rebuilt for the Electron ABI.
 
 ### 5.2 Re-watch / re-read logs — ⬜ Not started `P2`
 
@@ -401,3 +418,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-24 | 4.1 TV Shows category (TMDB `searchTv` + season-based release detection, `mergeCategories` for existing users) — 95/95 tests |
 | 2026-07-24 | 4.2 Manga category (AniList `searchManga` type:MANGA, chapter totals → progress, `getMangaRelations`) — 101/101 tests |
 | 2026-07-25 | 4.3 Fully custom categories (Settings add/delete with emoji picker, manual-only add, dynamic nav glyphs) — **Milestone 4 complete** — 108/108 tests |
+| 2026-07-26 | 5.1 Series rename UI (pencil button + double-click → inline Enter/Escape/blur input, optimistic sidebar + card relabel) — 110/110 tests |
