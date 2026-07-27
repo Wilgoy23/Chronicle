@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-26
+> Last updated: 2026-07-27
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -33,7 +33,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 4.3 | Fully custom categories | M4 | P2 | ✅ |
 | 5.1 | Series rename UI | M5 | P1 | ✅ |
 | 5.2 | Re-watch / re-read logs | M5 | P2 | ✅ |
-| 5.3 | Release inbox polish | M5 | P2 | ⬜ |
+| 5.3 | Release inbox polish | M5 | P2 | ✅ |
 | 5.4 | Tags / genre chips | M5 | P2 | ⬜ |
 | 5.5 | Compact list view | M5 | P3 | ⬜ |
 | 5.6 | Light theme | M5 | P3 | ⬜ |
@@ -398,10 +398,38 @@ follow-up; not in this task's scope.
 (6 new db tests: add/get ordering, `log_count` on entries, `deleteLog`, entry-delete
 cascade, `getLogsByCategory` scoping). better-sqlite3 rebuilt for the Electron ABI.
 
-### 5.3 Release inbox polish — ⬜ Not started `P2`
+### 5.3 Release inbox polish — ✅ Done `P2`
 
-- [ ] Native Electron `Notification` when the daily scan finds new releases (respects existing notification settings)
-- [ ] Panel splits "Out now" vs "Upcoming" (future `release_date`), with "releases in N days" labels
+- [x] Native Electron `Notification` when the daily scan finds new releases (respects existing notification settings)
+- [x] Panel splits "Out now" vs "Upcoming" (future `release_date`), with "releases in N days" labels
+
+**Implementation notes.**
+
+- *Notifications* already shipped with the release-management panel (M5 groundwork):
+  `performScan` in `electron/main.js` fires a native `Notification` after each scan —
+  a single-item body when one release lands, a "N new releases" summary otherwise.
+  Settings are respected upstream in `electron/releaseChecker.js` (`notifPrefs` →
+  `enabled` gate + per-`category` opt-out), so a disabled category never scans and
+  a disabled toggle skips the whole run. This task verified and closed the box; no
+  new notification code was needed.
+- *Panel split* (`src/components/ReleasesPanel.jsx`): releases are partitioned into
+  **Out now** (a valid `release_date` at or before today) and **Upcoming** (a future
+  date, or date-TBA/unreleased items which sort last within Upcoming). Out-now items
+  sort most-recent-first; upcoming items sort soonest-first. Each section carries a
+  header with a count pill.
+- *Countdown labels*: a `countdown(ts)` helper renders a pill next to the date on
+  upcoming rows — "Tomorrow", "in N days" (< 1 wk), "in 1 week", "in N weeks"
+  (< 2 mo), then "in N months". Out-now rows show the absolute date only.
+- CSS: added `.releases-scroll` (the scroll/padding wrapper now that the list is
+  split), `.releases-section` / `.releases-section-head` / `-title` / `-count`, and
+  the `.release-countdown` accent pill; `.releases-list` is now a plain nested list.
+
+**Verification.** `vite build` clean (212.57 kB bundle). Renderer-only change — no
+DB surface touched, so the `logs`/entries schema and native binary are untouched and
+the 116-test db suite is logically unaffected. The suite was not re-run this task
+because the running Electron app holds the OS lock on `better-sqlite3` (rebuilding
+for the system Node ABI would EPERM); no rebuild was required since `electron/db.js`
+was not modified.
 
 ### 5.4 Tags / genre chips — ⬜ Not started `P2`
 
@@ -455,3 +483,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-25 | 4.3 Fully custom categories (Settings add/delete with emoji picker, manual-only add, dynamic nav glyphs) — **Milestone 4 complete** — 108/108 tests |
 | 2026-07-26 | 5.1 Series rename UI (pencil button + double-click → inline Enter/Escape/blur input, optimistic sidebar + card relabel) — 110/110 tests |
 | 2026-07-26 | 5.2 Re-watch / re-read logs (`logs` table, edit-panel history + add form, ×N card tag, per-occurrence timeline, "treated-as-first-log" model) — 116/116 tests |
+| 2026-07-27 | 5.3 Release inbox polish (native scan notifications confirmed; What's-New panel split into Out now / Upcoming with soonest-first sort + "in N days" countdown pills) — renderer-only, 116/116 unaffected |
