@@ -102,6 +102,7 @@ export default function SearchModal({
       rating:    r.score ?? null,
       notes:     '',
       description: r.description ?? null,
+      genres:    r.genres || null,
       cover_url: r.cover || null,
       series_id: defSeriesId ?? null,
       date_read: today(),

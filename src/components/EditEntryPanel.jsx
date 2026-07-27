@@ -35,6 +35,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         date_read: entry.date_read ?? '',
         progress:       entry.progress != null ? String(entry.progress) : '',
         progress_total: entry.progress_total != null ? String(entry.progress_total) : '',
+        genres:    entry.genres ?? '',
       })
       window.db.getLogs(entry.id).then(setLogs)
       setLogOpen(false)
@@ -86,6 +87,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
       date_read: form.date_read || null,
       progress:       form.progress !== '' ? Number(form.progress) : 0,
       progress_total: form.progress_total !== '' ? Number(form.progress_total) : null,
+      genres:    form.genres.trim() || null,
     })
     setSaving(false)
     onUpdate(updated)
@@ -244,6 +246,16 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
                 />
               </label>
             </div>
+
+            <label className="edit-label">
+              Tags <span className="subtle">(comma-separated)</span>
+              <input
+                className="edit-input"
+                placeholder="e.g. Action, Fantasy, Favorites"
+                value={form.genres}
+                onChange={e => set('genres', e.target.value)}
+              />
+            </label>
 
             {entry.description && (
               <details className="edit-desc">

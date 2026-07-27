@@ -18,7 +18,9 @@ function shortStatus(entry) {
   return STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]
 }
 
-export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement }) {
+export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement, onTagClick, activeTag }) {
+  const tags = entry.genres ? entry.genres.split(',').map(t => t.trim()).filter(Boolean) : []
+
   function handleDragStart(e) {
     e.dataTransfer.setData('text/plain', String(entry.id))
     e.dataTransfer.effectAllowed = 'move'
@@ -97,6 +99,22 @@ export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement 
             </span>
           )}
         </div>
+
+        {tags.length > 0 && (
+          <div className="card-genres">
+            {tags.map(t => (
+              <button
+                key={t}
+                type="button"
+                className={`card-genre-chip ${activeTag && activeTag.toLowerCase() === t.toLowerCase() ? 'active' : ''}`}
+                onClick={e => { e.stopPropagation(); onTagClick?.(t) }}
+                title={`Filter by ${t}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
 
         {(entry.notes || entry.description) && (
           <p className="card-notes">{entry.notes || entry.description}</p>

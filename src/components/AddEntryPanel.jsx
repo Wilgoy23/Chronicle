@@ -3,7 +3,7 @@ import { STATUS_LABELS, categoryVerbs } from '../App'
 import SeriesSelect from './SeriesSelect'
 
 const today = () => new Date().toISOString().slice(0, 10)
-const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series_id: null, date_read: today() }
+const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series_id: null, date_read: today(), genres: '' }
 
 export default function AddEntryPanel({ open, category, color, seriesList = [], defaultSeriesId = null, onClose, onAdded }) {
   const [form, setForm]   = useState(DEFAULT)
@@ -38,6 +38,7 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
       cover_url: form.cover_url || null,
       series_id: form.series_id ?? null,
       date_read: form.date_read || null,
+      genres:    form.genres.trim() || null,
     })
     if (result?.error === 'DUPLICATE') {
       setDupError(true)
@@ -118,6 +119,15 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
               placeholder="https://…"
               value={form.cover_url}
               onChange={e => set('cover_url', e.target.value)}
+            />
+          </label>
+
+          <label>
+            Tags <span className="subtle">(comma-separated)</span>
+            <input
+              placeholder="e.g. Action, Fantasy, Favorites"
+              value={form.genres}
+              onChange={e => set('genres', e.target.value)}
             />
           </label>
 

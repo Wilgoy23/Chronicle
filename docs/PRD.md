@@ -34,7 +34,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 5.1 | Series rename UI | M5 | P1 | ✅ |
 | 5.2 | Re-watch / re-read logs | M5 | P2 | ✅ |
 | 5.3 | Release inbox polish | M5 | P2 | ✅ |
-| 5.4 | Tags / genre chips | M5 | P2 | ⬜ |
+| 5.4 | Tags / genre chips | M5 | P2 | ✅ |
 | 5.5 | Compact list view | M5 | P3 | ⬜ |
 | 5.6 | Light theme | M5 | P3 | ⬜ |
 | 5.7 | Smarter duplicate detection | M5 | P3 | ⬜ |
@@ -423,20 +423,59 @@ cascade, `getLogsByCategory` scoping). better-sqlite3 rebuilt for the Electron A
 - CSS: added `.releases-scroll` (the scroll/padding wrapper now that the list is
   split), `.releases-section` / `.releases-section-head` / `-title` / `-count`, and
   the `.release-countdown` accent pill; `.releases-list` is now a plain nested list.
+- *Per-tab scoping* (`src/App.jsx`, follow-up refinement): What's New is now filtered
+  to the active category — the Books tab shows only book releases, Anime only anime,
+  etc. A derived `categoryReleases` feeds the panel, the bell badge counts only that
+  category's unseen items (`unseenForCat`), and opening the panel marks only the
+  active category's `new` items as `seen` (other tabs keep their unread badges until
+  visited). The unused global `unseenReleases` state was removed. Tradeoff: the bell
+  no longer alerts to other tabs' releases while you're on a given tab; those surface
+  on tab switch.
 
-**Verification.** `vite build` clean (212.57 kB bundle). Renderer-only change — no
+**Verification.** `vite build` clean (212.72 kB bundle after per-tab scoping; 212.57 kB
+for the panel split). Renderer-only change — no
 DB surface touched, so the `logs`/entries schema and native binary are untouched and
 the 116-test db suite is logically unaffected. The suite was not re-run this task
 because the running Electron app holds the OS lock on `better-sqlite3` (rebuilding
 for the system Node ABI would EPERM); no rebuild was required since `electron/db.js`
 was not modified.
 
-### 5.4 Tags / genre chips — ⬜ Not started `P2`
+### 5.4 Tags / genre chips — ✅ Done `P2`
 
-Search results already return `genres`, currently discarded.
+Search results already returned `genres`, previously discarded.
 
-- [ ] Store genres on add; render as chips on card/edit panel
-- [ ] Clicking a chip filters the current view; user-defined tags as stretch
+- [x] Store genres on add; render as chips on card/edit panel
+- [x] Clicking a chip filters the current view; user-defined tags as stretch
+
+**Implementation notes.**
+
+- *Storage* (`electron/db.js`): new `genres TEXT` column (idempotent `ALTER TABLE`
+  migration) added to `ENTRY_SELECT`, `addEntry`, and `updateEntry`. Genres are a
+  single comma-separated string. A `normalizeGenres` helper trims each item, drops
+  blanks, dedupes case-insensitively, and returns `null` when empty. `updateEntry`
+  preserves existing genres when the field is `undefined` (mirrors the progress
+  drag-to-series behaviour) and clears them on an explicit empty string.
+- *Capture on add*: the API path (`SearchModal.handleAdd`) forwards `r.genres` (the
+  ≤ 3 genres already joined by `electron/api.js`); the manual path (`AddEntryPanel`)
+  and `EditEntryPanel` each gained a comma-separated **Tags** input, satisfying the
+  user-defined-tags stretch.
+- *Chips* (`EntryCard`): `entry.genres` is split into clickable pill buttons under
+  the title. Clicking a chip calls `onTagClick` (stops card-edit propagation); the
+  chip for the active filter renders highlighted. Threaded through `SeriesGroup` so
+  grouped cards get the same behaviour.
+- *Filtering* (`App.jsx`): a `tagFilter` state feeds a new `filteredEntries` predicate
+  (case-insensitive exact match against the split genre list). An active filter
+  flattens the grid to solo cards (like series-filter/search do) and shows a
+  clearable `#tag ✕` pill in the filter strip. `tagFilter` resets on category switch.
+- CSS: `.card-genres` / `.card-genre-chip` (+ `.active`) and the `.tag-filter-active`
+  pill, all accent-tinted via `color-mix`.
+
+**Verification.** `vite build` clean (214.26 kB bundle). `electron/db.js` changed, so
+the full suite was run (Electron confirmed not running first): **121/121 pass** —
+5 new `genres / tags` db tests (trim/dedupe on add, null defaults, update, clear on
+empty, preserve on omit) added to the existing 116. better-sqlite3 was rebuilt back
+to the Electron ABI afterward (`@electron/rebuild -f -o better-sqlite3`, "✔ Rebuild
+Complete") so the running app's native binding stays valid.
 
 ### 5.5 Compact list view — ⬜ Not started `P3`
 
@@ -484,3 +523,5 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-26 | 5.1 Series rename UI (pencil button + double-click → inline Enter/Escape/blur input, optimistic sidebar + card relabel) — 110/110 tests |
 | 2026-07-26 | 5.2 Re-watch / re-read logs (`logs` table, edit-panel history + add form, ×N card tag, per-occurrence timeline, "treated-as-first-log" model) — 116/116 tests |
 | 2026-07-27 | 5.3 Release inbox polish (native scan notifications confirmed; What's-New panel split into Out now / Upcoming with soonest-first sort + "in N days" countdown pills) — renderer-only, 116/116 unaffected |
+| 2026-07-27 | 5.3 follow-up: What's New scoped to the active tab (per-category panel + bell badge via `categoryReleases`/`unseenForCat`; per-category mark-as-seen; removed global `unseenReleases`) — renderer-only, 116/116 unaffected |
+| 2026-07-27 | 5.4 Tags / genre chips (`genres` column + `normalizeGenres` trim/dedupe; API genres captured on add, comma-separated Tags input on manual add + edit; clickable card chips filter the view via `tagFilter` with a clearable `#tag` pill) — 121/121 tests |

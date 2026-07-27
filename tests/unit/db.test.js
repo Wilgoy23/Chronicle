@@ -167,6 +167,38 @@ describe('progress tracking', () => {
   })
 })
 
+describe('genres / tags', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('stores genres on add and trims/dedupes them', () => {
+    const entry = addEntry({ category: 'book', title: 'Dune', status: 'completed', genres: ' Sci-Fi ,Epic, sci-fi ,Adventure' })
+    expect(entry.genres).toBe('Sci-Fi, Epic, Adventure')
+  })
+
+  it('defaults genres to null when omitted or empty', () => {
+    expect(addEntry({ category: 'book', title: 'Dune', status: 'completed' }).genres).toBeNull()
+    expect(addEntry({ category: 'book', title: 'Foundation', status: 'completed', genres: '  ,  ' }).genres).toBeNull()
+  })
+
+  it('updates genres', () => {
+    const entry   = addEntry({ category: 'book', title: 'Dune', status: 'completed', genres: 'Sci-Fi' })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, genres: 'Fantasy, Favorites' })
+    expect(updated.genres).toBe('Fantasy, Favorites')
+  })
+
+  it('clears genres when passed an empty string', () => {
+    const entry   = addEntry({ category: 'book', title: 'Dune', status: 'completed', genres: 'Sci-Fi' })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, genres: '' })
+    expect(updated.genres).toBeNull()
+  })
+
+  it('preserves genres when a caller omits them (e.g. drag-to-series)', () => {
+    const entry   = addEntry({ category: 'book', title: 'Dune', status: 'completed', genres: 'Sci-Fi, Epic' })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, series_id: null })
+    expect(updated.genres).toBe('Sci-Fi, Epic')
+  })
+})
+
 describe('description (API synopsis, separate from notes)', () => {
   beforeEach(() => initDb(':memory:'))
 

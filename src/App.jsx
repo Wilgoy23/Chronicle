@@ -172,6 +172,7 @@ export default function App() {
   const [view, setView]               = useState('grid')
   const [statusFilter, setStatusFilter] = useState('all')
   const [seriesFilter, setSeriesFilter] = useState(null) // series_id | null
+  const [tagFilter, setTagFilter]       = useState(null) // genre/tag string | null
   const [search, setSearch]           = useState('')
   const searchRef                     = useRef(null)
   const [sort, setSort]               = useState('recent')
@@ -241,6 +242,8 @@ export default function App() {
     entries
       .filter(e => statusFilter === 'all' || e.status === statusFilter)
       .filter(e => seriesFilter == null || e.series_id === seriesFilter)
+      .filter(e => tagFilter == null || (e.genres || '').toLowerCase()
+        .split(',').map(t => t.trim()).includes(tagFilter.toLowerCase()))
       .filter(e => !query ||
         e.title.toLowerCase().includes(query) ||
         (e.series && e.series.toLowerCase().includes(query)) ||
@@ -259,6 +262,7 @@ export default function App() {
     if (activeCat) {
       flushPendingDelete() // don't carry an undo across category switches
       setSeriesFilter(null)
+      setTagFilter(null)
       setSearch('')
       setSort(loadSort(activeCat.id))
       setShowNewSeriesInput(false)
@@ -421,6 +425,11 @@ export default function App() {
   }
 
   function handleEdit(entry) { setEditingEntry(entry) }
+
+  // Clicking a genre/tag chip filters the view; clicking the active one clears it.
+  function handleTagClick(tag) {
+    setTagFilter(prev => (prev && prev.toLowerCase() === tag.toLowerCase() ? null : tag))
+  }
 
   // Delete a single re-watch/re-read log occurrence (from the timeline).
   async function handleDeleteLog(logId) {
@@ -785,6 +794,18 @@ export default function App() {
                 <button className="filter-search-clear" onClick={() => setSearch('')} title="Clear search">✕</button>
               )}
             </div>
+
+            {tagFilter && (
+              <button
+                className="tag-filter-active"
+                onClick={() => setTagFilter(null)}
+                title="Clear tag filter"
+              >
+                <span className="tag-filter-hash">#</span>
+                {tagFilter}
+                <span className="tag-filter-x">✕</span>
+              </button>
+            )}
           </div>
 
           {view === 'timeline' ? (
@@ -830,7 +851,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {(seriesFilter != null || query
+            {(seriesFilter != null || tagFilter != null || query
               ? filteredEntries.map(e => ({ type: 'solo', entry: e }))
               : groupEntries(filteredEntries, seriesList)
             ).map(item =>
@@ -846,6 +867,8 @@ export default function App() {
                   onIncrement={handleIncrement}
                   onDropEntry={handleDropEntry}
                   onDeleteSeries={handleDeleteSeries}
+                  onTagClick={handleTagClick}
+                  activeTag={tagFilter}
                 />
               ) : (
                 <EntryCard
@@ -855,6 +878,8 @@ export default function App() {
                   onDelete={handleDelete}
                   onEdit={handleEdit}
                   onIncrement={handleIncrement}
+                  onTagClick={handleTagClick}
+                  activeTag={tagFilter}
                 />
               )
             )}

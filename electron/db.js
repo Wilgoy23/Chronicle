@@ -32,6 +32,8 @@ function initDb(dbPath) {
   try { db.exec('ALTER TABLE entries ADD COLUMN progress_total INTEGER') } catch {}
   // API synopsis, kept separate from the user's personal notes
   try { db.exec('ALTER TABLE entries ADD COLUMN description TEXT') } catch {}
+  // Genres / tags — comma-separated string (API genres on add, user-editable)
+  try { db.exec('ALTER TABLE entries ADD COLUMN genres TEXT') } catch {}
 
   // Series table — standalone, first-class records
   db.exec(`
@@ -107,7 +109,7 @@ function initDb(dbPath) {
 const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
          e.date_read, e.created_at, e.series_id, e.source, e.source_id,
-         e.progress, e.progress_total, e.description, s.name AS series,
+         e.progress, e.progress_total, e.description, e.genres, s.name AS series,
          (SELECT COUNT(*) FROM logs l WHERE l.entry_id = e.id) AS log_count
   FROM entries e
   LEFT JOIN series s ON e.series_id = s.id
@@ -119,14 +121,30 @@ function getEntries(category) {
     : db.prepare(`${ENTRY_SELECT} ORDER BY e.id DESC`).all()
 }
 
-function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description }) {
+// Trim/dedupe a comma-separated genre/tag string; return null when empty.
+function normalizeGenres(genres) {
+  if (genres == null) return null
+  const seen = new Set()
+  const out = []
+  for (const raw of String(genres).split(',')) {
+    const g = raw.trim()
+    if (!g) continue
+    const key = g.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(g)
+  }
+  return out.length ? out.join(', ') : null
+}
+
+function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres }) {
   // Duplicate guard — same title in same category
   const dup = db.prepare(`${ENTRY_SELECT} WHERE e.category = ? AND LOWER(e.title) = LOWER(?)`).get(category, title)
   if (dup) return { error: 'DUPLICATE', existing: dup }
 
   const result = db.prepare(`
-    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     category,
     title,
@@ -141,22 +159,24 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
     progress  ?? 0,
     progress_total ?? null,
     description ?? null,
+    normalizeGenres(genres),
   )
 
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid)
 }
 
-function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total }) {
-  // Preserve progress when a caller omits it (e.g. drag-to-series only touches series_id).
-  const cur = db.prepare('SELECT progress, progress_total FROM entries WHERE id = ?').get(id) || {}
+function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total, genres }) {
+  // Preserve progress/genres when a caller omits them (e.g. drag-to-series only touches series_id).
+  const cur = db.prepare('SELECT progress, progress_total, genres FROM entries WHERE id = ?').get(id) || {}
   const nextProgress = progress       === undefined ? (cur.progress ?? 0)          : (progress ?? 0)
   const nextTotal    = progress_total === undefined ? (cur.progress_total ?? null) : (progress_total ?? null)
+  const nextGenres   = genres         === undefined ? (cur.genres ?? null)         : normalizeGenres(genres)
   db.prepare(`
     UPDATE entries SET title = ?, status = ?, rating = ?, notes = ?, series_id = ?, date_read = ?,
-      progress = ?, progress_total = ?
+      progress = ?, progress_total = ?, genres = ?
     WHERE id = ?
   `).run(title, status, rating ?? null, notes ?? '', series_id ?? null, date_read ?? null,
-         nextProgress, nextTotal, id)
+         nextProgress, nextTotal, nextGenres, id)
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(id)
 }
 
