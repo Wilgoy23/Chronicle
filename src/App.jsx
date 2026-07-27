@@ -184,7 +184,6 @@ export default function App() {
   const [renameValue, setRenameValue]         = useState('')
   const [logsByEntry, setLogsByEntry]         = useState({}) // entry_id -> log[] (re-watch/re-read occurrences)
   const [releases, setReleases]       = useState([])
-  const [unseenReleases, setUnseen]   = useState(0)
   const [releasesOpen, setReleasesOpen] = useState(false)
   const [deleteToast, setDeleteToast] = useState(null)  // { title } while an undo is available
   const pendingDeleteRef              = useRef(null)     // { entry, index } awaiting commit
@@ -200,7 +199,7 @@ export default function App() {
   useEffect(() => {
     if (!window.releases) return
     const load = () =>
-      window.releases.get().then(({ items, unseen }) => { setReleases(items); setUnseen(unseen) })
+      window.releases.get().then(({ items }) => setReleases(items))
     load()
     const off = window.releases.onUpdated(load)
     return off
@@ -208,9 +207,11 @@ export default function App() {
 
   async function openReleases() {
     setReleasesOpen(true)
-    // Clear the unread badge without removing items from the inbox.
-    const unread = releases.filter(r => r.status === 'new')
-    setUnseen(0)
+    // Clear the unread badge for the active category only — other tabs keep theirs.
+    const unread = releases.filter(r => r.status === 'new' && r.category === activeCat?.id)
+    if (!unread.length) return
+    const unreadIds = new Set(unread.map(r => r.id))
+    setReleases(prev => prev.map(r => unreadIds.has(r.id) ? { ...r, status: 'seen' } : r))
     await Promise.all(unread.map(r => window.releases.setStatus(r.id, 'seen')))
   }
 
@@ -249,6 +250,10 @@ export default function App() {
 
   const visibleCats     = categories.filter(c => c.enabled)
   const activeCat       = visibleCats.find(c => c.id === category) ?? visibleCats[0]
+
+  // What's New is scoped to the active tab: only this category's releases + badge.
+  const categoryReleases = releases.filter(r => activeCat && r.category === activeCat.id)
+  const unseenForCat     = categoryReleases.reduce((n, r) => n + (r.status === 'new' ? 1 : 0), 0)
 
   useEffect(() => {
     if (activeCat) {
@@ -707,8 +712,8 @@ export default function App() {
                 aria-label="New releases"
               >
                 {ICONS.bell}
-                {unseenReleases > 0 && (
-                  <span className="bell-badge">{unseenReleases > 9 ? '9+' : unseenReleases}</span>
+                {unseenForCat > 0 && (
+                  <span className="bell-badge">{unseenForCat > 9 ? '9+' : unseenForCat}</span>
                 )}
               </button>
               {view === 'grid' && (
@@ -889,7 +894,7 @@ export default function App() {
 
           <ReleasesPanel
             open={releasesOpen}
-            releases={releases}
+            releases={categoryReleases}
             color={activeCat?.color}
             onClose={() => setReleasesOpen(false)}
             onAdd={handleAddRelease}
