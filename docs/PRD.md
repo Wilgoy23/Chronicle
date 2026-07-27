@@ -35,7 +35,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 5.2 | Re-watch / re-read logs | M5 | P2 | ✅ |
 | 5.3 | Release inbox polish | M5 | P2 | ✅ |
 | 5.4 | Tags / genre chips | M5 | P2 | ✅ |
-| 5.5 | Compact list view | M5 | P3 | ⬜ |
+| 5.5 | Compact list view | M5 | P3 | ✅ |
 | 5.6 | Light theme | M5 | P3 | ⬜ |
 | 5.7 | Smarter duplicate detection | M5 | P3 | ⬜ |
 
@@ -477,9 +477,38 @@ empty, preserve on omit) added to the existing 116. better-sqlite3 was rebuilt b
 to the Electron ABI afterward (`@electron/rebuild -f -o better-sqlite3`, "✔ Rebuild
 Complete") so the running app's native binding stays valid.
 
-### 5.5 Compact list view — ⬜ Not started `P3`
+### 5.5 Compact list view — ✅ Done `P3`
 
-- [ ] Third view toggle: dense rows (cover thumb, title, series, status, rating, date) for large collections
+- [x] Third view toggle: dense rows (cover thumb, title, series, status, rating, date) for large collections
+
+**Implementation notes.**
+
+- New `src/components/ListView.jsx` renders a **flat, dense table** — a header row
+  (Title / Series / Status / Rating / Date) plus one `.list-row` per entry, laid out
+  with a shared CSS-grid `--list-cols` template so columns align. Each row shows the
+  cover thumbnail, title, series, status (colored dot + per-category verb), rating
+  (`8/10`, `—` when unrated/planned), and the consumed date (`date_read`, falling back
+  to `created_at`, formatted `Mon D, YYYY`).
+- Unlike the grid, list view is **not grouped by series** — it consumes the already-sorted
+  `filteredEntries` directly, so the active **Sort** control reads top-to-bottom. The sort
+  dropdown's visibility gate was widened from `view === 'grid'` to `view !== 'timeline'`
+  so it now shows in list view too (the timeline still sorts by date internally).
+- Feature parity carried over from the card: an in-progress row shows `7 / 24` with a
+  hover-reveal **+1** increment (reuses `handleIncrement`), a re-watch/re-read count
+  `×N` chip (`log_count`), row-click opens the edit panel, and a hover **✕** routes
+  through the same delete/undo flow.
+- Third `list` toggle button added between Grid and Timeline (new `ICONS.list` glyph).
+  View preference now **persists globally** in `localStorage` (`chronicle.view`) via a
+  `loadView`/`setView` wrapper — previously the view reset to grid on every launch.
+- Responsive: below 640px the Series and Date columns collapse and the grid template
+  tightens, keeping the row legible on the narrow breakpoint where the view toggle
+  itself is hidden (a persisted list view still renders correctly).
+
+**Verification.** `vite build` clean (218.28 kB bundle). Renderer-only change — no DB
+surface touched, so the native binary / schema are untouched. Non-db suites pass
+(66/66); `db.test.js` was not re-run because better-sqlite3 is currently built for the
+Electron ABI (running-app lock) and this task added no DB code, so those tests are
+logically unaffected — same convention as 5.3.
 
 ### 5.6 Light theme — ⬜ Not started `P3`
 
@@ -525,3 +554,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-27 | 5.3 Release inbox polish (native scan notifications confirmed; What's-New panel split into Out now / Upcoming with soonest-first sort + "in N days" countdown pills) — renderer-only, 116/116 unaffected |
 | 2026-07-27 | 5.3 follow-up: What's New scoped to the active tab (per-category panel + bell badge via `categoryReleases`/`unseenForCat`; per-category mark-as-seen; removed global `unseenReleases`) — renderer-only, 116/116 unaffected |
 | 2026-07-27 | 5.4 Tags / genre chips (`genres` column + `normalizeGenres` trim/dedupe; API genres captured on add, comma-separated Tags input on manual add + edit; clickable card chips filter the view via `tagFilter` with a clearable `#tag` pill) — 121/121 tests |
+| 2026-07-27 | 5.5 Compact list view (`ListView.jsx` — dense sorted rows: cover/title/series/status/rating/date, +1 & delete parity; third `list` toggle; view preference persisted globally) — renderer-only, build clean |

@@ -3,6 +3,7 @@ import AddEntryPanel from './components/AddEntryPanel'
 import ConfirmDialog from './components/ConfirmDialog'
 import EditEntryPanel from './components/EditEntryPanel'
 import EntryCard from './components/EntryCard'
+import ListView from './components/ListView'
 import SearchModal from './components/SearchModal'
 import SeriesGroup from './components/SeriesGroup'
 import TimelineView from './components/TimelineView'
@@ -39,6 +40,7 @@ const ICONS = {
   settings: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="14" cy="20" r="2"/></svg>,
   grid:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
   timeline: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+  list:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"/></svg>,
   plus:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   back:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
   menu:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
@@ -169,7 +171,7 @@ export default function App() {
   const [searchOpen, setSearchOpen]   = useState(false)
   const [manualOpen, setManualOpen]   = useState(false)
   const [editingEntry, setEditingEntry] = useState(null)
-  const [view, setView]               = useState('grid')
+  const [view, setViewState]          = useState(loadView)
   const [statusFilter, setStatusFilter] = useState('all')
   const [seriesFilter, setSeriesFilter] = useState(null) // series_id | null
   const [tagFilter, setTagFilter]       = useState(null) // genre/tag string | null
@@ -319,6 +321,19 @@ export default function App() {
   function handleLogsChanged() {
     refreshEntries()
     refreshLogs()
+  }
+
+  // View preference (grid / list / timeline) persists globally in localStorage.
+  function loadView() {
+    try {
+      const saved = localStorage.getItem('chronicle.view')
+      return ['grid', 'list', 'timeline'].includes(saved) ? saved : 'grid'
+    } catch { return 'grid' }
+  }
+
+  function setView(v) {
+    setViewState(v)
+    try { localStorage.setItem('chronicle.view', v) } catch { /* localStorage unavailable */ }
   }
 
   // Sort preference persists per category in localStorage.
@@ -725,7 +740,7 @@ export default function App() {
                   <span className="bell-badge">{unseenForCat > 9 ? '9+' : unseenForCat}</span>
                 )}
               </button>
-              {view === 'grid' && (
+              {view !== 'timeline' && (
                 <div className="sort-control" title="Sort">
                   <span className="sort-icon">{ICONS.sort}</span>
                   <select
@@ -746,6 +761,11 @@ export default function App() {
                   onClick={() => setView('grid')}
                   title="Grid view"
                 >{ICONS.grid}</button>
+                <button
+                  className={`view-btn ${view === 'list' ? 'active' : ''}`}
+                  onClick={() => setView('list')}
+                  title="Compact list view"
+                >{ICONS.list}</button>
                 <button
                   className={`view-btn ${view === 'timeline' ? 'active' : ''}`}
                   onClick={() => setView('timeline')}
@@ -818,6 +838,32 @@ export default function App() {
                 onDeleteLog={handleDeleteLog}
                 onUpdate={handleUpdate}
                 onEdit={handleEdit}
+              />
+              {filteredEntries.length === 0 && (
+                <div className="empty-state">
+                  {query ? (
+                    <p>No matches for &ldquo;{search}&rdquo;.</p>
+                  ) : (
+                    <>
+                      <p>No {activeCat?.label.toLowerCase()} yet.</p>
+                      <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
+                        Add your first
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {view === 'list' ? (
+            <div className="list-container">
+              <ListView
+                entries={filteredEntries}
+                color={activeCat?.color}
+                onDelete={handleDelete}
+                onEdit={handleEdit}
+                onIncrement={handleIncrement}
               />
               {filteredEntries.length === 0 && (
                 <div className="empty-state">
