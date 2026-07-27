@@ -32,7 +32,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 4.2 | Manga category | M4 | P2 | ✅ |
 | 4.3 | Fully custom categories | M4 | P2 | ✅ |
 | 5.1 | Series rename UI | M5 | P1 | ✅ |
-| 5.2 | Re-watch / re-read logs | M5 | P2 | ⬜ |
+| 5.2 | Re-watch / re-read logs | M5 | P2 | ✅ |
 | 5.3 | Release inbox polish | M5 | P2 | ⬜ |
 | 5.4 | Tags / genre chips | M5 | P2 | ⬜ |
 | 5.5 | Compact list view | M5 | P3 | ⬜ |
@@ -354,14 +354,49 @@ re-labels immediately without a refetch. A new `ICONS.pencil` glyph was added.
 existing tests already covered the name update + JOIN reflection). better-sqlite3
 rebuilt for the Electron ABI.
 
-### 5.2 Re-watch / re-read logs — ⬜ Not started `P2`
+### 5.2 Re-watch / re-read logs — ✅ Done `P2`
 
 One row per title means a rewatch overwrites the original date and rating.
 
-- [ ] New `logs` table: `entry_id`, `date`, `rating`, `notes`
-- [ ] Edit panel: "Log another watch/read" adds a log entry
-- [ ] Timeline shows each log occurrence; card shows latest + count (e.g. "×3")
-- [ ] Existing `date_read`/`rating` migrate to (or are treated as) the first log
+- [x] New `logs` table: `entry_id`, `date`, `rating`, `notes`
+- [x] Edit panel: "Log another watch/read" adds a log entry
+- [x] Timeline shows each log occurrence; card shows count (e.g. "×3")
+- [x] Existing `date_read`/`rating` are treated as the first log (occurrence #1)
+
+**Implementation notes.** Chose the **"treated as"** model over a data migration:
+`entries.date_read`/`rating` remains occurrence #1, and the new `logs` table
+(`entry_id` FK `ON DELETE CASCADE`, `date`, `rating`, `notes`) holds only the
+*additional* re-watches/re-reads. This keeps `addEntry`/`updateEntry`/sort/Insights
+untouched — no backfill, no risk to existing rows.
+
+- **DB** (`electron/db.js`): `getLogs(entryId)`, `getLogsByCategory(category)`,
+  `addLog`, `deleteLog`. `ENTRY_SELECT` gains a correlated `log_count` subquery so
+  cards/timeline know the occurrence count with no extra query. `deleteEntry` now
+  deletes the entry's logs explicitly (we don't rely on `PRAGMA foreign_keys`).
+  Wired through IPC + preload.
+- **Edit panel** (`EditEntryPanel`): a **History** section lists occurrence #1
+  (read-only, from the entry itself) plus each log (date · rating · notes) with a
+  per-log delete. A "Log another {re-watch/re-read/playthrough}" button reveals an
+  inline form (date defaults to today, optional rating + notes; Enter adds without
+  submitting the outer form). Changes call `onLogsChanged` so the parent re-fetches
+  entries (updated `log_count`) and logs.
+- **Card** (`EntryCard`): a `×N` tag (N = `log_count + 1`) appears beside the series
+  tag when the title has been logged more than once.
+- **Timeline** (`TimelineView`): entries are expanded into occurrences — the base
+  record plus one per log, each grouped by its own date and showing its own rating.
+  Re-logs render with an `↻ {verb} again` marker; deleting a re-log occurrence
+  removes just that log (`onDeleteLog`), while the base occurrence keeps the
+  existing entry-delete/undo flow. App holds a `logsByEntry` map, refreshed on
+  category change and after any log change.
+
+**Known limitation.** JSON export/import (3.2/3.3) does not yet carry `logs` — a
+backup/restore round-trip preserves occurrence #1 but drops extra logs (importing
+remaps entry ids, so log rows would need id remapping to survive). Tracked as a
+follow-up; not in this task's scope.
+
+**Verification.** `vite build` clean (211.06 kB bundle); `npm test` 116/116 pass
+(6 new db tests: add/get ordering, `log_count` on entries, `deleteLog`, entry-delete
+cascade, `getLogsByCategory` scoping). better-sqlite3 rebuilt for the Electron ABI.
 
 ### 5.3 Release inbox polish — ⬜ Not started `P2`
 
@@ -419,3 +454,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-24 | 4.2 Manga category (AniList `searchManga` type:MANGA, chapter totals → progress, `getMangaRelations`) — 101/101 tests |
 | 2026-07-25 | 4.3 Fully custom categories (Settings add/delete with emoji picker, manual-only add, dynamic nav glyphs) — **Milestone 4 complete** — 108/108 tests |
 | 2026-07-26 | 5.1 Series rename UI (pencil button + double-click → inline Enter/Escape/blur input, optimistic sidebar + card relabel) — 110/110 tests |
+| 2026-07-26 | 5.2 Re-watch / re-read logs (`logs` table, edit-panel history + add form, ×N card tag, per-occurrence timeline, "treated-as-first-log" model) — 116/116 tests |

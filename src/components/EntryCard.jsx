@@ -84,9 +84,19 @@ export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement 
       <div className="card-body">
         <h3 className="card-title">{entry.title}</h3>
 
-        {entry.series && (
-          <span className="card-series-tag">{entry.series}</span>
-        )}
+        <div className="card-tags">
+          {entry.series && (
+            <span className="card-series-tag">{entry.series}</span>
+          )}
+          {entry.log_count > 0 && (
+            <span
+              className="card-rewatch-tag"
+              title={`Logged ${entry.log_count + 1} times`}
+            >
+              ×{entry.log_count + 1}
+            </span>
+          )}
+        </div>
 
         {(entry.notes || entry.description) && (
           <p className="card-notes">{entry.notes || entry.description}</p>

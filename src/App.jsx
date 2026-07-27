@@ -182,6 +182,7 @@ export default function App() {
   const [seriesToDelete, setSeriesToDelete]   = useState(null) // { id, name }
   const [renamingSeriesId, setRenamingSeriesId] = useState(null) // series_id being renamed | null
   const [renameValue, setRenameValue]         = useState('')
+  const [logsByEntry, setLogsByEntry]         = useState({}) // entry_id -> log[] (re-watch/re-read occurrences)
   const [releases, setReleases]       = useState([])
   const [unseenReleases, setUnseen]   = useState(0)
   const [releasesOpen, setReleasesOpen] = useState(false)
@@ -259,6 +260,7 @@ export default function App() {
       setNewSeriesName('')
       window.db.getEntries(activeCat.id).then(setEntries)
       window.db.getSeries(activeCat.id).then(setSeriesList)
+      refreshLogs()
     }
   }, [activeCat?.id])
 
@@ -288,6 +290,26 @@ export default function App() {
 
   function refreshSeriesList() {
     window.db.getSeries(activeCat.id).then(setSeriesList)
+  }
+
+  function refreshEntries() {
+    window.db.getEntries(activeCat.id).then(setEntries)
+  }
+
+  // Re-watch/re-read logs for the active category, grouped by entry_id.
+  function refreshLogs() {
+    window.db.getLogsByCategory(activeCat.id).then(rows => {
+      const map = {}
+      for (const l of rows) (map[l.entry_id] ??= []).push(l)
+      setLogsByEntry(map)
+    })
+  }
+
+  // Called by the edit panel after a log is added/removed: the entry's log_count
+  // and the timeline occurrences both need to reflect the change.
+  function handleLogsChanged() {
+    refreshEntries()
+    refreshLogs()
   }
 
   // Sort preference persists per category in localStorage.
@@ -394,6 +416,12 @@ export default function App() {
   }
 
   function handleEdit(entry) { setEditingEntry(entry) }
+
+  // Delete a single re-watch/re-read log occurrence (from the timeline).
+  async function handleDeleteLog(logId) {
+    await window.db.deleteLog(logId)
+    handleLogsChanged()
+  }
 
   async function handleDropEntry(entryId, targetSeriesId) {
     const entry = entries.find(e => e.id === entryId)
@@ -758,8 +786,10 @@ export default function App() {
             <div className="timeline-container">
               <TimelineView
                 entries={filteredEntries}
+                logsByEntry={logsByEntry}
                 color={activeCat?.color}
                 onDelete={handleDelete}
+                onDeleteLog={handleDeleteLog}
                 onUpdate={handleUpdate}
                 onEdit={handleEdit}
               />
@@ -854,6 +884,7 @@ export default function App() {
             onClose={() => setEditingEntry(null)}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
+            onLogsChanged={handleLogsChanged}
           />
 
           <ReleasesPanel

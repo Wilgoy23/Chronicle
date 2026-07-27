@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   initDb, addEntry, getEntries, updateEntry, deleteEntry,
+  getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries,
   exportData, importData, getAllSeries, backupTo, validateBackupFile, closeDb, getDbPath,
 } from '../../electron/db.js'
@@ -444,5 +445,67 @@ describe('renameSeries', () => {
     const names = getSeries('book').map(s => s.name).sort()
     expect(names).toEqual(['Alpha Renamed', 'Beta'])
     expect(b.name).toBe('Beta')
+  })
+})
+
+describe('re-watch / re-read logs', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  function makeEntry() {
+    return addEntry({ category: 'movie', title: 'Blade Runner', status: 'completed', rating: 8 })
+  }
+
+  it('addLog stores a log and getLogs returns it', () => {
+    const e   = makeEntry()
+    const log = addLog({ entry_id: e.id, date: '2026-01-02', rating: 9, notes: 'Even better' })
+    expect(log.id).toBeGreaterThan(0)
+    expect(log.entry_id).toBe(e.id)
+    const logs = getLogs(e.id)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].rating).toBe(9)
+    expect(logs[0].notes).toBe('Even better')
+  })
+
+  it('getLogs returns newest date first', () => {
+    const e = makeEntry()
+    addLog({ entry_id: e.id, date: '2026-01-01' })
+    addLog({ entry_id: e.id, date: '2026-03-01' })
+    addLog({ entry_id: e.id, date: '2026-02-01' })
+    expect(getLogs(e.id).map(l => l.date)).toEqual(['2026-03-01', '2026-02-01', '2026-01-01'])
+  })
+
+  it('entries carry a log_count reflecting their logs', () => {
+    const e = makeEntry()
+    expect(getEntries('movie')[0].log_count).toBe(0)
+    addLog({ entry_id: e.id, date: '2026-01-01' })
+    addLog({ entry_id: e.id, date: '2026-02-01' })
+    expect(getEntries('movie')[0].log_count).toBe(2)
+  })
+
+  it('deleteLog removes only the target log', () => {
+    const e = makeEntry()
+    const a = addLog({ entry_id: e.id, date: '2026-01-01' })
+    addLog({ entry_id: e.id, date: '2026-02-01' })
+    deleteLog(a.id)
+    const logs = getLogs(e.id)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].date).toBe('2026-02-01')
+  })
+
+  it('deleting an entry cascades its logs', () => {
+    const e = makeEntry()
+    addLog({ entry_id: e.id, date: '2026-01-01' })
+    deleteEntry(e.id)
+    expect(getLogs(e.id)).toHaveLength(0)
+  })
+
+  it('getLogsByCategory returns logs for entries in that category only', () => {
+    const movie = makeEntry()
+    const book  = addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    addLog({ entry_id: movie.id, date: '2026-01-01' })
+    addLog({ entry_id: book.id,  date: '2026-01-02' })
+    const movieLogs = getLogsByCategory('movie')
+    expect(movieLogs).toHaveLength(1)
+    expect(movieLogs[0].entry_id).toBe(movie.id)
   })
 })

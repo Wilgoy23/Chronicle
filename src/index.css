@@ -1149,6 +1149,28 @@ body {
   padding: 0.1rem 0.4rem;
 }
 
+.card-tags {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+.card-tags .card-series-tag { margin-top: 0; }
+
+/* Re-watch / re-read occurrence count (×N) */
+.card-rewatch-tag {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--accent) 80%, white);
+  display: inline-flex;
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding: 0.1rem 0.36rem;
+}
+
 /* Legacy card-series text */
 .card-series {
   color: var(--text-mute);
@@ -2335,6 +2357,7 @@ body {
 .tl-status { background: none; border: none; color: inherit; cursor: pointer; font-family: inherit; font-size: 0.68rem; padding: 0; transition: opacity 0.15s; }
 .tl-status:hover { opacity: 0.75; }
 .tl-rating { background: color-mix(in srgb, var(--accent) 13%, transparent); border-radius: 4px; color: var(--accent); font-size: 0.67rem; font-weight: 700; letter-spacing: -0.01em; padding: 0.1rem 0.36rem; }
+.tl-relog { color: color-mix(in srgb, var(--accent) 78%, white); }
 .tl-progress { color: var(--text-dim); font-size: 0.67rem; font-weight: 600; }
 
 .tl-delete {
@@ -2548,6 +2571,103 @@ body {
   margin-top: 4px;
   padding-top: 14px;
 }
+
+/* ── Re-watch / re-read history (edit panel) ─────────────────────── */
+.edit-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.edit-log-row {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  font-size: 0.8rem;
+  gap: 10px;
+  padding: 7px 10px;
+}
+.edit-log-row--first {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.edit-log-date {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 84px;
+}
+.edit-log-label {
+  color: var(--text-mute);
+  flex-shrink: 0;
+}
+.edit-log-rating {
+  color: color-mix(in srgb, var(--accent) 80%, white);
+  font-weight: 700;
+}
+.edit-log-note {
+  color: var(--text-mute);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edit-log-del {
+  background: none;
+  border: none;
+  color: var(--text-mute);
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin-left: auto;
+  padding: 0 2px;
+}
+.edit-log-del:hover { color: #f87171; }
+
+.edit-log-add-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-mute);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 7px 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.edit-log-add-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+}
+
+.edit-log-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.edit-log-form-row {
+  display: flex;
+  gap: 8px;
+}
+.edit-log-date-input { flex: 1; }
+.edit-log-rating-input { width: 88px; }
+.edit-log-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.edit-log-add { flex: 0 0 auto; padding-left: 20px; padding-right: 20px; }
+.edit-log-cancel {
+  background: none;
+  border: none;
+  color: var(--text-mute);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.edit-log-cancel:hover { color: var(--text); }
 
 .edit-label {
   color: var(--text-dim);

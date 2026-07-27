@@ -3,9 +3,24 @@ import { DEFAULT_CATEGORIES, STATUS_LABELS, progressUnit, categoryVerbs } from '
 import SeriesSelect from './SeriesSelect'
 import Cover from './Cover'
 
-export default function EditEntryPanel({ entry, color, seriesList = [], onClose, onUpdate, onDelete }) {
+// Noun for the "Log another …" button, per category.
+function logNoun(category) {
+  if (category === 'game') return 'playthrough'
+  if (category === 'book' || category === 'manga') return 're-read'
+  if (['anime', 'movie', 'tv'].includes(category)) return 're-watch'
+  return 'entry'
+}
+
+const today = () => new Date().toISOString().slice(0, 10)
+
+export default function EditEntryPanel({ entry, color, seriesList = [], onClose, onUpdate, onDelete, onLogsChanged }) {
   const [form, setForm]     = useState(null)
   const [saving, setSaving] = useState(false)
+  const [logs, setLogs]     = useState([])
+  const [logOpen, setLogOpen]     = useState(false)
+  const [logDate, setLogDate]     = useState('')
+  const [logRating, setLogRating] = useState('')
+  const [logNotes, setLogNotes]   = useState('')
   const titleRef = useRef(null)
 
   useEffect(() => {
@@ -21,9 +36,35 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         progress:       entry.progress != null ? String(entry.progress) : '',
         progress_total: entry.progress_total != null ? String(entry.progress_total) : '',
       })
+      window.db.getLogs(entry.id).then(setLogs)
+      setLogOpen(false)
+      setLogDate(today())
+      setLogRating('')
+      setLogNotes('')
       setTimeout(() => titleRef.current?.focus(), 50)
     }
   }, [entry?.id])
+
+  async function submitLog() {
+    const created = await window.db.addLog({
+      entry_id: entry.id,
+      date:     logDate || null,
+      rating:   logRating !== '' ? Number(logRating) : null,
+      notes:    logNotes.trim(),
+    })
+    setLogs(prev => [created, ...prev])
+    setLogOpen(false)
+    setLogDate(today())
+    setLogRating('')
+    setLogNotes('')
+    onLogsChanged?.()
+  }
+
+  async function removeLog(id) {
+    await window.db.deleteLog(id)
+    setLogs(prev => prev.filter(l => l.id !== id))
+    onLogsChanged?.()
+  }
 
   if (!entry || !form) return null
 
@@ -58,6 +99,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
   }
 
   const catLabel   = DEFAULT_CATEGORIES.find(c => c.id === entry.category)?.label ?? entry.category
+  const catVerbs   = categoryVerbs(entry.category)
   const seriesName = form.series_id ? seriesList.find(s => s.id === form.series_id)?.name : null
   const heroMeta   = [seriesName, catLabel].filter(Boolean).join(' · ')
 
@@ -220,6 +262,70 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
                 onChange={e => set('notes', e.target.value)}
               />
             </label>
+
+            <div className="edit-section-label edit-section-label--extra">History</div>
+
+            <div className="edit-log-list">
+              {/* Occurrence #1 — the entry's own record. */}
+              <div className="edit-log-row edit-log-row--first">
+                <span className="edit-log-date">{entry.date_read || '—'}</span>
+                <span className="edit-log-label">First {catVerbs.past.toLowerCase()}</span>
+                {entry.rating != null && <span className="edit-log-rating">{entry.rating}/10</span>}
+              </div>
+
+              {logs.map(l => (
+                <div className="edit-log-row" key={l.id}>
+                  <span className="edit-log-date">{l.date || '—'}</span>
+                  <span className="edit-log-label">↻ {catVerbs.past}</span>
+                  {l.rating != null && <span className="edit-log-rating">{l.rating}/10</span>}
+                  {l.notes && <span className="edit-log-note">{l.notes}</span>}
+                  <button
+                    type="button"
+                    className="edit-log-del"
+                    onClick={() => removeLog(l.id)}
+                    title="Remove this log"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+
+            {logOpen ? (
+              <div className="edit-log-form">
+                <div className="edit-log-form-row">
+                  <input
+                    type="date"
+                    className="edit-input edit-log-date-input"
+                    value={logDate}
+                    onChange={e => setLogDate(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitLog() } }}
+                  />
+                  <input
+                    type="number"
+                    min={1} max={10}
+                    className="edit-input edit-log-rating-input"
+                    placeholder="rating"
+                    value={logRating}
+                    onChange={e => setLogRating(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitLog() } }}
+                  />
+                </div>
+                <input
+                  className="edit-input"
+                  placeholder="Notes (optional)"
+                  value={logNotes}
+                  onChange={e => setLogNotes(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitLog() } }}
+                />
+                <div className="edit-log-form-actions">
+                  <button type="button" className="submit-btn edit-log-add" onClick={submitLog}>Add</button>
+                  <button type="button" className="edit-log-cancel" onClick={() => setLogOpen(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="edit-log-add-btn" onClick={() => setLogOpen(true)}>
+                + Log another {logNoun(entry.category)}
+              </button>
+            )}
 
           </div>
 

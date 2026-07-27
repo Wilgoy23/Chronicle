@@ -1,6 +1,7 @@
 const { ipcMain } = require('electron')
 const {
   getEntries, addEntry, updateEntry, deleteEntry,
+  getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries,
 } = require('./db')
 const { searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames } = require('./api')
@@ -10,6 +11,10 @@ function registerHandlers(readSettings) {
   ipcMain.handle('db:addEntry',      (_e, entry)    => addEntry(entry))
   ipcMain.handle('db:updateEntry',   (_e, entry)    => updateEntry(entry))
   ipcMain.handle('db:deleteEntry',   (_e, id)       => deleteEntry(id))
+  ipcMain.handle('db:getLogs',          (_e, entryId)  => getLogs(entryId))
+  ipcMain.handle('db:getLogsByCategory', (_e, category) => getLogsByCategory(category))
+  ipcMain.handle('db:addLog',           (_e, log)      => addLog(log))
+  ipcMain.handle('db:deleteLog',        (_e, id)       => deleteLog(id))
   ipcMain.handle('db:getSeries',     (_e, category) => getSeries(category))
   ipcMain.handle('db:addSeries',     (_e, category, name) => addSeries(category, name))
   ipcMain.handle('db:deleteSeries',  (_e, id)       => deleteSeries(id))

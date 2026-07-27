@@ -47,6 +47,19 @@ function initDb(dbPath) {
   // FK from entries to series
   try { db.exec('ALTER TABLE entries ADD COLUMN series_id INTEGER REFERENCES series(id) ON DELETE SET NULL') } catch {}
 
+  // Re-watch / re-read logs — additional occurrences beyond the entry's own
+  // first record (entries.date_read/rating is treated as occurrence #1).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id   INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+      date       TEXT,
+      rating     INTEGER,
+      notes      TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `)
+
   // Detected new releases for franchises in the library
   db.exec(`
     CREATE TABLE IF NOT EXISTS releases (
@@ -94,7 +107,8 @@ function initDb(dbPath) {
 const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
          e.date_read, e.created_at, e.series_id, e.source, e.source_id,
-         e.progress, e.progress_total, e.description, s.name AS series
+         e.progress, e.progress_total, e.description, s.name AS series,
+         (SELECT COUNT(*) FROM logs l WHERE l.entry_id = e.id) AS log_count
   FROM entries e
   LEFT JOIN series s ON e.series_id = s.id
 `
@@ -147,7 +161,38 @@ function updateEntry({ id, title, status, rating, notes, series_id, date_read, p
 }
 
 function deleteEntry(id) {
+  // Cascade logs explicitly — the ON DELETE CASCADE FK only fires when
+  // PRAGMA foreign_keys is on, which we don't rely on elsewhere.
+  db.prepare('DELETE FROM logs WHERE entry_id = ?').run(id)
   db.prepare('DELETE FROM entries WHERE id = ?').run(id)
+  return { success: true }
+}
+
+// ── Re-watch / re-read logs ──────────────────────────────────────
+
+function getLogs(entryId) {
+  return db.prepare('SELECT id, entry_id, date, rating, notes FROM logs WHERE entry_id = ? ORDER BY date DESC, id DESC').all(entryId)
+}
+
+// All logs for entries in a category, for the timeline's per-occurrence view.
+function getLogsByCategory(category) {
+  return db.prepare(`
+    SELECT l.id, l.entry_id, l.date, l.rating, l.notes
+    FROM logs l JOIN entries e ON l.entry_id = e.id
+    WHERE e.category = ?
+    ORDER BY l.date DESC, l.id DESC
+  `).all(category)
+}
+
+function addLog({ entry_id, date, rating, notes }) {
+  const result = db.prepare(
+    'INSERT INTO logs (entry_id, date, rating, notes) VALUES (?, ?, ?, ?)'
+  ).run(entry_id, date || null, rating ?? null, notes ?? '')
+  return db.prepare('SELECT id, entry_id, date, rating, notes FROM logs WHERE id = ?').get(result.lastInsertRowid)
+}
+
+function deleteLog(id) {
+  db.prepare('DELETE FROM logs WHERE id = ?').run(id)
   return { success: true }
 }
 
@@ -353,6 +398,7 @@ function importData(data, { mode = 'merge' } = {}) {
 module.exports = {
   initDb,
   getEntries, addEntry, updateEntry, deleteEntry,
+  getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries,
   getEntriesWithSource, getEntriesMissingSource, setEntrySource,
   getReleases, addRelease, getKnownReleaseSourceIds, setReleaseStatus, unseenReleaseCount,
