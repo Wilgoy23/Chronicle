@@ -54,7 +54,16 @@ export default function SeriesGroup({ seriesId, name, entries, color, onDelete, 
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <button className="series-header" onClick={() => setExpanded(e => !e)}>
+      <div
+        className="series-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={() => setExpanded(e => !e)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v) }
+        }}
+      >
         <div className="series-covers">
           {covers.map((url, i) =>
             url
@@ -83,7 +92,7 @@ export default function SeriesGroup({ seriesId, name, entries, color, onDelete, 
               : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${summary}`}
           </div>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="series-entries">
