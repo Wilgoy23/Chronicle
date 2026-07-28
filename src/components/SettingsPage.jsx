@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { createCustomCategory } from '../App'
+import { getTheme, setTheme } from '../theme'
 import ConfirmDialog from './ConfirmDialog'
 
 const SECTIONS = [
+  { id: 'appearance',    label: 'Appearance',    icon: '🎨' },
   { id: 'api',           label: 'API Keys',      icon: '🔑' },
   { id: 'categories',    label: 'Categories',    icon: '📂' },
   { id: 'notifications', label: 'Notifications', icon: '🔔' },
@@ -56,12 +58,53 @@ export default function SettingsPage() {
       <div className="settings-content">
         {saved && <div className="settings-toast">✓ Saved</div>}
 
+        {section === 'appearance'    && <AppearanceSection />}
         {section === 'api'           && <ApiSection           settings={settings} onSave={save} />}
         {section === 'categories'    && <CategoriesSection    settings={settings} onSave={save} />}
         {section === 'notifications' && <NotificationsSection settings={settings} onSave={save} />}
         {section === 'data'          && <DataSection />}
       </div>
     </div>
+  )
+}
+
+// ── Appearance ─────────────────────────────────────
+const THEME_OPTIONS = [
+  { id: 'dark',  label: 'Dark',  hint: 'The default deep-space palette.', glyph: '🌙' },
+  { id: 'light', label: 'Light', hint: 'A bright palette for well-lit rooms.', glyph: '☀️' },
+]
+
+function AppearanceSection() {
+  const [theme, setThemeState] = useState(getTheme)
+
+  function choose(id) {
+    setThemeState(setTheme(id)) // applies to <html> + persists immediately
+  }
+
+  return (
+    <section className="settings-section">
+      <h2>Appearance</h2>
+      <p className="settings-desc">Choose how Chronicle looks. Your choice is saved on this device.</p>
+
+      <div className="theme-options">
+        {THEME_OPTIONS.map(opt => (
+          <button
+            key={opt.id}
+            type="button"
+            className={`theme-option ${theme === opt.id ? 'active' : ''}`}
+            onClick={() => choose(opt.id)}
+            aria-pressed={theme === opt.id}
+          >
+            <span className={`theme-swatch theme-swatch-${opt.id}`}>{opt.glyph}</span>
+            <span className="theme-option-text">
+              <span className="theme-option-label">{opt.label}</span>
+              <span className="theme-option-hint">{opt.hint}</span>
+            </span>
+            {theme === opt.id && <span className="theme-option-check">✓</span>}
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }
 

@@ -36,7 +36,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 5.3 | Release inbox polish | M5 | P2 | ✅ |
 | 5.4 | Tags / genre chips | M5 | P2 | ✅ |
 | 5.5 | Compact list view | M5 | P3 | ✅ |
-| 5.6 | Light theme | M5 | P3 | ⬜ |
+| 5.6 | Light theme | M5 | P3 | ✅ |
 | 5.7 | Smarter duplicate detection | M5 | P3 | ⬜ |
 
 ---
@@ -510,11 +510,41 @@ surface touched, so the native binary / schema are untouched. Non-db suites pass
 Electron ABI (running-app lock) and this task added no DB code, so those tests are
 logically unaffected — same convention as 5.3.
 
-### 5.6 Light theme — ⬜ Not started `P3`
+### 5.6 Light theme — ✅ Done `P3`
 
 Palette in `src/index.css` is dark-only via `:root` variables — a variable swap gets most of the way.
 
-- [ ] Theme toggle in Settings (dark default); audit hardcoded hexes outside `:root`
+- [x] Theme toggle in Settings (dark default); audit hardcoded hexes outside `:root`
+
+**Implementation notes.**
+
+- *Palette swap.* Light mode is a `:root[data-theme="light"]` block that overrides the
+  existing neutral tokens (`--bg`/`--bg2..4`, `--surface`/`--surface2`, `--border`/`--border2`,
+  `--text`/`--text-dim`/`--text-mute`) plus `color-scheme: light` so native widgets
+  (scrollbars, checkboxes, the color/date inputs) follow. Category **accent** colors are
+  intentionally untouched — they read on both backgrounds.
+- *Hardcoded-hex audit (outside `:root`).* The gap was the dark-mode idiom of tinting text
+  and surfaces with `rgba(255,255,255,α)`, which goes invisible on a light bg. Introduced
+  three theme-aware tokens — `--text-strong` (emphasized near-white text → near-black in
+  light), `--raise` (neutral hover/row overlay), and `--glass-bg` (the frosted `.topbar`) —
+  and swapped the literals over to them (the 0.85–0.92 + 0.7 text whites, the card/row/timeline
+  hover fills, the topbar). Fixed three spots that used opaque `#fff`/low-alpha white as *body
+  text* (`.sidebar-logo` label, `.series-header:hover .series-name`, `.save-field-btn:hover`).
+  Deliberately **left** the whites that sit on fixed non-theme surfaces — `.cover-progress-inc`
+  (white on a dark pill over cover art) and `.bell-badge` (white on red) are correct in both
+  themes. Remaining low-alpha white *borders/scrollbar tints* degrade to near-invisible in light
+  mode (a cosmetic softening of focus/hover outlines, not a readability bug) — noted as a
+  follow-up if a deeper pass is wanted.
+- *Toggle + persistence.* New `src/theme.js` (`getTheme`/`applyTheme`/`setTheme`) stores the
+  choice in `localStorage` (`chronicle.theme`, dark default) and reflects it on
+  `<html data-theme>`. `main.jsx` calls `applyTheme(getTheme())` **before** React mounts, so
+  there's no flash of the dark palette on a light-mode launch. A new **Appearance** section
+  (first tab in Settings) offers Dark/Light cards that apply instantly on click.
+
+**Verification.** `vite build` clean (68.24 kB CSS / 219.73 kB JS). Renderer-only, no DB
+surface touched. Live GUI not driven headlessly (Electron needs the running app/display and
+the running-app holds the better-sqlite3 lock) — same convention as 5.3/5.5; the change is
+CSS-token + a small localStorage helper, audited by hand for invisible-text regressions.
 
 ### 5.7 Smarter duplicate detection — ⬜ Not started `P3`
 
@@ -555,3 +585,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-27 | 5.3 follow-up: What's New scoped to the active tab (per-category panel + bell badge via `categoryReleases`/`unseenForCat`; per-category mark-as-seen; removed global `unseenReleases`) — renderer-only, 116/116 unaffected |
 | 2026-07-27 | 5.4 Tags / genre chips (`genres` column + `normalizeGenres` trim/dedupe; API genres captured on add, comma-separated Tags input on manual add + edit; clickable card chips filter the view via `tagFilter` with a clearable `#tag` pill) — 121/121 tests |
 | 2026-07-27 | 5.5 Compact list view (`ListView.jsx` — dense sorted rows: cover/title/series/status/rating/date, +1 & delete parity; third `list` toggle; view preference persisted globally) — renderer-only, build clean |
+| 2026-07-27 | 5.6 Light theme (`:root[data-theme=light]` palette swap + `color-scheme`; `--text-strong`/`--raise`/`--glass-bg` tokens replace dark-only white literals; `theme.js` persistence + no-flash boot; Appearance section in Settings) — renderer-only, build clean |
