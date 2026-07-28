@@ -37,7 +37,7 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 5.4 | Tags / genre chips | M5 | P2 | ✅ |
 | 5.5 | Compact list view | M5 | P3 | ✅ |
 | 5.6 | Light theme | M5 | P3 | ✅ |
-| 5.7 | Smarter duplicate detection | M5 | P3 | ⬜ |
+| 5.7 | Smarter duplicate detection | M5 | P3 | ✅ |
 
 ---
 
@@ -546,12 +546,44 @@ surface touched. Live GUI not driven headlessly (Electron needs the running app/
 the running-app holds the better-sqlite3 lock) — same convention as 5.3/5.5; the change is
 CSS-token + a small localStorage helper, audited by hand for invisible-text regressions.
 
-### 5.7 Smarter duplicate detection — ⬜ Not started `P3`
+### 5.7 Smarter duplicate detection — ✅ Done `P3`
 
 Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so same-title remakes can't coexist.
 
-- [ ] Prefer `source` + `source_id` match when available; fall back to title+year, then title
-- [ ] "Add anyway" escape hatch on duplicate warning
+- [x] Prefer `source` + `source_id` match when available; fall back to title+year, then title
+- [x] "Add anyway" escape hatch on duplicate warning
+
+**Implementation notes.**
+
+- *New `year` column* (idempotent `ALTER TABLE … ADD COLUMN year INTEGER`), threaded through
+  `ENTRY_SELECT`, `addEntry`, and `importData`/`exportData` (so it round-trips). `updateEntry`
+  leaves it untouched, so it's preserved across edits (same pattern as `description`).
+- *`findDuplicate({ category, title, source, source_id, year })`* (exported for tests) implements
+  **tiered, mutually-exclusive precedence**, all category-scoped:
+  1. exact external identity (`source` + `source_id`) when both are present — a remake with a
+     *different* `source_id` therefore reads as a genuinely new title and is allowed;
+  2. else `title` + `year` — same-title remakes from different years coexist;
+  3. else `title`-only — the original behaviour for manual entries with no year.
+  The category scope matters because `tmdb` backs **both** movies and TV, so a movie id could
+  otherwise collide with a same-numbered TV id. `addEntry` gains an `allowDuplicate` flag that
+  skips the guard entirely.
+- *"Add anyway" escape hatch.* Manual `AddEntryPanel`: the duplicate warning now carries an
+  amber **Add anyway** button (re-submits with `allowDuplicate: true`), plus a new optional
+  **Year** field feeding the title+year tier. `SearchModal`: the "In Library" gate switched from
+  title-based to **`source_id`-based**, so remakes are no longer wrongly disabled; a title/year-tier
+  collision that slips past that gate flips the row's button to **Add anyway** (amber) rather than
+  silently no-op'ing. Search-add now forwards `r.year`.
+- *Tradeoff (documented).* Because tier 1 is preferred and exclusive, adding a source-linked title
+  that collides only with a *manual* (source-less) same-title entry is **allowed** (they're distinct
+  records — one linked, one not). This is intentional so remakes/editions coexist; the title-only
+  tier still blocks manual-vs-manual and API-re-add dupes. Editing `year` on an existing entry isn't
+  exposed in the edit panel yet (year is captured on add) — noted as a minor follow-up.
+
+**Verification.** `npm test` → **129/129 pass** (+8: year stored on add; source+source_id match;
+remake with different id allowed; movie/tv id no cross-match; title+year coexistence; title-only
+fallback; `allowDuplicate` bypass; `findDuplicate` prefers source over a title collision).
+`vite build` clean (220.54 kB). better-sqlite3 rebuilt back to the Electron ABI afterward
+(`@electron/rebuild -f -o better-sqlite3`, "✔ Rebuild Complete"). GUI not driven headlessly.
 
 ---
 
@@ -586,3 +618,4 @@ Duplicate guard is title-only per category (`electron/db.js` → `addEntry`), so
 | 2026-07-27 | 5.4 Tags / genre chips (`genres` column + `normalizeGenres` trim/dedupe; API genres captured on add, comma-separated Tags input on manual add + edit; clickable card chips filter the view via `tagFilter` with a clearable `#tag` pill) — 121/121 tests |
 | 2026-07-27 | 5.5 Compact list view (`ListView.jsx` — dense sorted rows: cover/title/series/status/rating/date, +1 & delete parity; third `list` toggle; view preference persisted globally) — renderer-only, build clean |
 | 2026-07-27 | 5.6 Light theme (`:root[data-theme=light]` palette swap + `color-scheme`; `--text-strong`/`--raise`/`--glass-bg` tokens replace dark-only white literals; `theme.js` persistence + no-flash boot; Appearance section in Settings) — renderer-only, build clean |
+| 2026-07-27 | 5.7 Smarter duplicate detection (`year` column; tiered `findDuplicate` source+source_id → title+year → title, category-scoped; `allowDuplicate` "Add anyway" in manual + search; source_id-based "In Library" gate) — **Milestone 5 complete** — 129/129 tests |

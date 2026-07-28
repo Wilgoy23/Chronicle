@@ -3,7 +3,7 @@ import { STATUS_LABELS, categoryVerbs } from '../App'
 import SeriesSelect from './SeriesSelect'
 
 const today = () => new Date().toISOString().slice(0, 10)
-const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series_id: null, date_read: today(), genres: '' }
+const DEFAULT = { title: '', status: 'completed', rating: '', notes: '', cover_url: '', series_id: null, date_read: today(), genres: '', year: '' }
 
 export default function AddEntryPanel({ open, category, color, seriesList = [], defaultSeriesId = null, onClose, onAdded }) {
   const [form, setForm]   = useState(DEFAULT)
@@ -26,8 +26,7 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+  async function submit(allowDuplicate) {
     if (!form.title.trim()) return
     const result = await window.db.addEntry({
       category,
@@ -39,6 +38,8 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
       series_id: form.series_id ?? null,
       date_read: form.date_read || null,
       genres:    form.genres.trim() || null,
+      year:      form.year !== '' ? Number(form.year) : null,
+      allowDuplicate,
     })
     if (result?.error === 'DUPLICATE') {
       setDupError(true)
@@ -47,6 +48,11 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
     setDupError(false)
     onAdded(result)
     setForm(DEFAULT)
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    submit(false)
   }
 
   if (!open) return null
@@ -71,7 +77,12 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
             />
           </label>
           {dupError && (
-            <p className="add-dup-error">"{form.title.trim()}" is already in your library.</p>
+            <div className="add-dup-error">
+              <span>&ldquo;{form.title.trim()}&rdquo; looks like it&rsquo;s already in your library.</span>
+              <button type="button" className="add-dup-anyway" onClick={() => submit(true)}>
+                Add anyway
+              </button>
+            </div>
           )}
 
           <label>
@@ -101,6 +112,17 @@ export default function AddEntryPanel({ open, category, color, seriesList = [], 
               placeholder="—"
               value={form.rating}
               onChange={e => set('rating', e.target.value)}
+            />
+          </label>
+
+          <label>
+            Year <span className="subtle">(optional — helps tell remakes apart)</span>
+            <input
+              type="number"
+              min={1000} max={2999}
+              placeholder="e.g. 2021"
+              value={form.year}
+              onChange={e => { set('year', e.target.value); setDupError(false) }}
             />
           </label>
 

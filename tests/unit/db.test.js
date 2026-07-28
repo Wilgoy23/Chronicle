@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  initDb, addEntry, getEntries, updateEntry, deleteEntry,
+  initDb, addEntry, findDuplicate, getEntries, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries,
   exportData, importData, getAllSeries, backupTo, validateBackupFile, closeDb, getDbPath,
@@ -67,6 +67,66 @@ describe('addEntry', () => {
     addEntry({ category: 'book', title: 'Dune', status: 'completed' })
     const dup = addEntry({ category: 'book', title: 'dune', status: 'planned' })
     expect(dup.error).toBe('DUPLICATE')
+  })
+
+  it('stores year on add and exposes it', () => {
+    const entry = addEntry({ category: 'movie', title: 'Dune', status: 'completed', year: 2021 })
+    expect(entry.year).toBe(2021)
+    expect(addEntry({ category: 'movie', title: 'Blade Runner', status: 'completed' }).year).toBeNull()
+  })
+})
+
+describe('smarter duplicate detection (5.7)', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('flags an exact source + source_id match', () => {
+    addEntry({ category: 'movie', title: 'Dune', status: 'completed', source: 'tmdb', source_id: 438631 })
+    const dup = addEntry({ category: 'movie', title: 'Dune (2021)', status: 'planned', source: 'tmdb', source_id: 438631 })
+    expect(dup.error).toBe('DUPLICATE')
+    expect(dup.existing.source_id).toBe('438631')
+  })
+
+  it('allows a same-title remake with a different source_id', () => {
+    addEntry({ category: 'movie', title: 'Dune', status: 'completed', source: 'tmdb', source_id: 841 })   // 1984
+    const remake = addEntry({ category: 'movie', title: 'Dune', status: 'planned', source: 'tmdb', source_id: 438631 }) // 2021
+    expect(remake.id).toBeTypeOf('number')
+    expect(remake.error).toBeUndefined()
+  })
+
+  it('does not cross-match a movie id against a same-numbered tv id (category scope)', () => {
+    addEntry({ category: 'movie', title: 'Thing', status: 'completed', source: 'tmdb', source_id: 100 })
+    const tv = addEntry({ category: 'tv', title: 'Thing', status: 'completed', source: 'tmdb', source_id: 100 })
+    expect(tv.id).toBeTypeOf('number')
+    expect(tv.error).toBeUndefined()
+  })
+
+  it('falls back to title + year, letting different years coexist', () => {
+    addEntry({ category: 'movie', title: 'Dune', status: 'completed', year: 1984 })
+    const same   = addEntry({ category: 'movie', title: 'Dune', status: 'planned', year: 1984 })
+    const remake = addEntry({ category: 'movie', title: 'Dune', status: 'planned', year: 2021 })
+    expect(same.error).toBe('DUPLICATE')
+    expect(remake.id).toBeTypeOf('number')
+    expect(remake.error).toBeUndefined()
+  })
+
+  it('falls back to title-only when no source or year is available', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    const dup = addEntry({ category: 'book', title: 'DUNE', status: 'planned' })
+    expect(dup.error).toBe('DUPLICATE')
+  })
+
+  it('allowDuplicate bypasses the guard entirely (Add anyway)', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    const forced = addEntry({ category: 'book', title: 'Dune', status: 'planned', allowDuplicate: true })
+    expect(forced.id).toBeTypeOf('number')
+    expect(forced.error).toBeUndefined()
+    expect(getEntries('book')).toHaveLength(2)
+  })
+
+  it('findDuplicate prefers source identity over a title collision', () => {
+    // A manual "Dune" (no source) exists; a sourced add with a NEW id is not a dup.
+    addEntry({ category: 'movie', title: 'Dune', status: 'completed' })
+    expect(findDuplicate({ category: 'movie', title: 'Dune', source: 'tmdb', source_id: 438631 })).toBeNull()
   })
 })
 

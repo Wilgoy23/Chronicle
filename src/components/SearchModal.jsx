@@ -53,11 +53,16 @@ export default function SearchModal({
   const [defSeriesId, setDefSeriesId] = useState(defaultSeriesId)
   const [defStatus, setDefStatus] = useState('completed')
   const [addedIds, setAddedIds]   = useState(new Set())
+  const [dupIds, setDupIds]       = useState(new Set()) // results flagged as duplicates, awaiting "Add anyway"
   const [addCount, setAddCount]   = useState(0)
   const debounceRef = useRef(null)
   const inputRef    = useRef(null)
 
-  const existingTitles = new Set(existingEntries.map(e => e.title.toLowerCase()))
+  // "In Library" is keyed on the external source id (5.7), so a same-title remake
+  // with a different id is still addable. All results here share this category's source.
+  const existingSourceIds = new Set(
+    existingEntries.filter(e => e.source_id != null).map(e => String(e.source_id))
+  )
 
   useEffect(() => {
     if (open) {
@@ -66,6 +71,7 @@ export default function SearchModal({
       setError(null)
       setNeedsKey(false)
       setAddedIds(new Set())
+      setDupIds(new Set())
       setAddCount(0)
       setDefSeriesId(defaultSeriesId)
       setTimeout(() => inputRef.current?.focus(), 60)
@@ -93,7 +99,7 @@ export default function SearchModal({
     setResults(result ?? [])
   }
 
-  async function handleAdd(r) {
+  async function handleAdd(r, allowDuplicate = false) {
     if (addedIds.has(r.id)) return
     const entry = await window.db.addEntry({
       category,
@@ -108,11 +114,19 @@ export default function SearchModal({
       date_read: today(),
       source:    SOURCE_KEYS[category] ?? null,
       source_id: r.id ?? null,
+      year:      r.year ?? null,
       // Episode/chapter counts from the API seed the progress total.
       progress:       0,
       progress_total: r.episodes ?? r.chapters ?? null,
+      allowDuplicate,
     })
-    if (entry?.error === 'DUPLICATE') return // already in library, button will show "In Library"
+    // A title/year-tier match (not caught by the source-id "In Library" gate):
+    // flag the row so the button offers an explicit "Add anyway".
+    if (entry?.error === 'DUPLICATE') {
+      setDupIds(prev => new Set([...prev, r.id]))
+      return
+    }
+    setDupIds(prev => { const n = new Set(prev); n.delete(r.id); return n })
     setAddedIds(prev => new Set([...prev, r.id]))
     setAddCount(c => c + 1)
     onAdd(entry)
@@ -187,8 +201,9 @@ export default function SearchModal({
                 <li className="search-modal-hint">Type to search {apiLabel}</li>
               )}
               {results.map(r => {
-                const inLibrary = existingTitles.has(r.title.toLowerCase())
+                const inLibrary = existingSourceIds.has(String(r.id))
                 const added = addedIds.has(r.id)
+                const isDup = dupIds.has(r.id)
                 return (
                   <li key={r.id} className={`search-modal-result${added || inLibrary ? ' added' : ''}`}>
                     <Cover className="search-modal-cover" src={r.cover} alt="" compact />
@@ -208,11 +223,12 @@ export default function SearchModal({
                       )}
                     </div>
                     <button
-                      className={`search-add-btn${added || inLibrary ? ' search-add-btn--added' : ''}`}
-                      onClick={() => handleAdd(r)}
+                      className={`search-add-btn${added || inLibrary ? ' search-add-btn--added' : ''}${isDup ? ' search-add-btn--dup' : ''}`}
+                      onClick={() => handleAdd(r, isDup)}
                       disabled={added || inLibrary}
+                      title={isDup ? 'A similar title is already in your library' : undefined}
                     >
-                      {inLibrary ? 'In Library' : added ? '✓ Added' : '+ Add'}
+                      {inLibrary ? 'In Library' : added ? '✓ Added' : isDup ? 'Add anyway' : '+ Add'}
                     </button>
                   </li>
                 )

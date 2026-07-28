@@ -34,6 +34,8 @@ function initDb(dbPath) {
   try { db.exec('ALTER TABLE entries ADD COLUMN description TEXT') } catch {}
   // Genres / tags — comma-separated string (API genres on add, user-editable)
   try { db.exec('ALTER TABLE entries ADD COLUMN genres TEXT') } catch {}
+  // Release year — used by smarter duplicate detection so same-title remakes coexist
+  try { db.exec('ALTER TABLE entries ADD COLUMN year INTEGER') } catch {}
 
   // Series table — standalone, first-class records
   db.exec(`
@@ -109,7 +111,7 @@ function initDb(dbPath) {
 const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
          e.date_read, e.created_at, e.series_id, e.source, e.source_id,
-         e.progress, e.progress_total, e.description, e.genres, s.name AS series,
+         e.progress, e.progress_total, e.description, e.genres, e.year, s.name AS series,
          (SELECT COUNT(*) FROM logs l WHERE l.entry_id = e.id) AS log_count
   FROM entries e
   LEFT JOIN series s ON e.series_id = s.id
@@ -137,14 +139,39 @@ function normalizeGenres(genres) {
   return out.length ? out.join(', ') : null
 }
 
-function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres }) {
-  // Duplicate guard — same title in same category
-  const dup = db.prepare(`${ENTRY_SELECT} WHERE e.category = ? AND LOWER(e.title) = LOWER(?)`).get(category, title)
-  if (dup) return { error: 'DUPLICATE', existing: dup }
+// Smarter duplicate detection (5.7). Tiered precedence, all category-scoped:
+//   1. exact external identity (source + source_id) — the strongest signal, so a
+//      remake with a *different* source_id is correctly treated as a new title;
+//   2. else title + year — lets same-title remakes from different years coexist;
+//   3. else title only — the original behaviour for manual entries with no year.
+// Returns the existing row, or null. Note: tmdb backs both movies and tv, so the
+// category scope is what keeps a movie id from colliding with a same-numbered tv id.
+function findDuplicate({ category, title, source, source_id, year }) {
+  if (source && source_id != null && source_id !== '') {
+    return db.prepare(
+      `${ENTRY_SELECT} WHERE e.category = ? AND e.source = ? AND e.source_id = ?`
+    ).get(category, source, String(source_id)) || null
+  }
+  if (year != null && year !== '') {
+    return db.prepare(
+      `${ENTRY_SELECT} WHERE e.category = ? AND LOWER(e.title) = LOWER(?) AND e.year = ?`
+    ).get(category, title, Number(year)) || null
+  }
+  return db.prepare(
+    `${ENTRY_SELECT} WHERE e.category = ? AND LOWER(e.title) = LOWER(?)`
+  ).get(category, title) || null
+}
+
+function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres, year, allowDuplicate }) {
+  // allowDuplicate is the "Add anyway" escape hatch from the duplicate warning.
+  if (!allowDuplicate) {
+    const dup = findDuplicate({ category, title, source, source_id, year })
+    if (dup) return { error: 'DUPLICATE', existing: dup }
+  }
 
   const result = db.prepare(`
-    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres, year)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     category,
     title,
@@ -160,6 +187,7 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
     progress_total ?? null,
     description ?? null,
     normalizeGenres(genres),
+    year != null && year !== '' ? Number(year) : null,
   )
 
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid)
@@ -364,10 +392,10 @@ function importData(data, { mode = 'merge' } = {}) {
   const insertEntry  = db.prepare(`
     INSERT INTO entries
       (category, title, status, rating, notes, cover_url, series_id, date_read,
-       source, source_id, progress, progress_total, description, created_at)
+       source, source_id, progress, progress_total, description, genres, year, created_at)
     VALUES
       (@category, @title, @status, @rating, @notes, @cover_url, @series_id, @date_read,
-       @source, @source_id, @progress, @progress_total, @description, @created_at)
+       @source, @source_id, @progress, @progress_total, @description, @genres, @year, @created_at)
   `)
 
   const seriesBefore = db.prepare('SELECT COUNT(*) AS n FROM series').get().n
@@ -404,6 +432,8 @@ function importData(data, { mode = 'merge' } = {}) {
         progress:       e.progress ?? 0,
         progress_total: e.progress_total ?? null,
         description:    e.description ?? null,
+        genres:         normalizeGenres(e.genres),
+        year:           e.year != null && e.year !== '' ? Number(e.year) : null,
         created_at:     e.created_at ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
       })
       imported++
@@ -417,7 +447,7 @@ function importData(data, { mode = 'merge' } = {}) {
 
 module.exports = {
   initDb,
-  getEntries, addEntry, updateEntry, deleteEntry,
+  getEntries, addEntry, findDuplicate, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries,
   getEntriesWithSource, getEntriesMissingSource, setEntrySource,
