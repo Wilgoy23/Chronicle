@@ -193,18 +193,20 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid)
 }
 
-function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total, genres }) {
-  // Preserve progress/genres when a caller omits them (e.g. drag-to-series only touches series_id).
-  const cur = db.prepare('SELECT progress, progress_total, genres FROM entries WHERE id = ?').get(id) || {}
+function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total, genres, year }) {
+  // Preserve progress/genres/year when a caller omits them (e.g. drag-to-series only touches series_id).
+  const cur = db.prepare('SELECT progress, progress_total, genres, year FROM entries WHERE id = ?').get(id) || {}
   const nextProgress = progress       === undefined ? (cur.progress ?? 0)          : (progress ?? 0)
   const nextTotal    = progress_total === undefined ? (cur.progress_total ?? null) : (progress_total ?? null)
   const nextGenres   = genres         === undefined ? (cur.genres ?? null)         : normalizeGenres(genres)
+  const nextYear     = year           === undefined ? (cur.year ?? null)
+                        : (year != null && year !== '' ? Number(year) : null)
   db.prepare(`
     UPDATE entries SET title = ?, status = ?, rating = ?, notes = ?, series_id = ?, date_read = ?,
-      progress = ?, progress_total = ?, genres = ?
+      progress = ?, progress_total = ?, genres = ?, year = ?
     WHERE id = ?
   `).run(title, status, rating ?? null, notes ?? '', series_id ?? null, date_read ?? null,
-         nextProgress, nextTotal, nextGenres, id)
+         nextProgress, nextTotal, nextGenres, nextYear, id)
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(id)
 }
 

@@ -14,7 +14,7 @@
 | # | Item | Origin | Priority | Status |
 |---|------|--------|----------|--------|
 | 6.1 | Re-watch/re-read logs missing from export/import | 5.2 | P1 | ✅ |
-| 6.2 | Edit existing entry's `year` | 5.7 | P2 | ⬜ |
+| 6.2 | Edit existing entry's `year` | 5.7 | P2 | ✅ |
 | 6.3 | Global cross-category search | 1.1 | P2 | ⬜ |
 | 6.4 | Insights: per-series average rating | 3.1 | P3 | ⬜ |
 | 6.5 | Insights: per-month heat strip | 3.1 | P3 | ⬜ |
@@ -75,23 +75,41 @@ logs; plus a log assertion added to the existing binary backup/restore test).
 Electron ABI (`@electron/rebuild -f -o better-sqlite3`, "✔ Rebuild Complete"). GUI
 not driven headlessly — change is DB-layer + a one-line toast update.
 
-### 6.2 Edit existing entry's `year` — `P2`
+### 6.2 Edit existing entry's `year` — ✅ Done `P2`
 
-`year` (added in 5.7 to power the title+year duplicate-detection tier) is captured
+`year` (added in 5.7 to power the title+year duplicate-detection tier) was captured
 only on add — `AddEntryPanel`'s Year field and the API search path — with no way to
-correct or add it afterward. `EditEntryPanel.jsx` has no `year` field at all.
+correct or add it afterward. `EditEntryPanel.jsx` had no `year` field at all.
 
 **Requirements**
-- [ ] Add a `year` number input to `EditEntryPanel`, same pattern as other optional
+- [x] Add a `year` number input to `EditEntryPanel`, same pattern as other optional
       metadata fields
-- [ ] `updateEntry` already accepts arbitrary columns via its merge pattern — confirm
-      `year` round-trips (add if the column is missing from the update payload builder)
+- [x] `updateEntry` round-trips `year` (the column was missing from the update
+      payload builder — added, following the existing preserve-on-omit pattern)
 
 **Acceptance:** editing an entry added without a year, setting one, and saving
-persists it — reflected immediately in future duplicate-detection checks.
+persists it — reflected immediately in future duplicate-detection checks. ✅
 
-**Touches:** `src/components/EditEntryPanel.jsx`, possibly `electron/db.js`
-(`updateEntry` column list).
+**Implementation notes:**
+- `updateEntry` (`electron/db.js`) gains a `year` param, following the exact
+  preserve-on-omit pattern already used for `progress`/`genres`: omitted → keeps the
+  current value (so drag-to-series, which only sends `series_id`, doesn't wipe it);
+  `''` or `null` → clears it; a number → sets it. The `UPDATE` statement and its
+  `SELECT` (for reading `cur.year`) both gained the column.
+- `EditEntryPanel.jsx`: form state now seeds `year` from `entry.year`, a new Year
+  input sits next to Date in the existing two-col row (Cover URL, previously paired
+  with Date, moved to its own full-width row below), and `handleSubmit` forwards
+  `year: form.year !== '' ? Number(form.year) : null` — the same on-submit shape
+  `AddEntryPanel` already used on add.
+- No IPC/preload change needed — `db:updateEntry` already forwards the whole payload
+  object untouched.
+
+**Verification.** `npm test` → **136/136 pass** (+3: set year on an entry added
+without one, clear year via empty string, preserve year when a caller omits it e.g.
+drag-to-series). `vite build` clean (220.98 kB JS / 68.87 kB CSS). better-sqlite3
+rebuilt back to the Electron ABI (`@electron/rebuild -f -o better-sqlite3`,
+"✔ Rebuild Complete"). GUI not driven headlessly — change mirrors the proven
+progress/genres edit-field pattern.
 
 ### 6.3 Global cross-category search — `P2`
 
@@ -195,3 +213,4 @@ technically non-zero-alpha) in light mode, with no dark-mode regression.
 |------|--------|
 | 2026-07-28 | Document created — captures items explicitly deferred during PRD.md milestones 1–5, prioritized by data-loss risk first (6.1), then usability gaps, then cosmetic/stretch items |
 | 2026-07-28 | 6.1 Re-watch/re-read logs now included in JSON export/import (`logs` array, `entry_id` remapped via id map, backward-compatible with pre-6.1 exports); binary backup/restore confirmed to already preserve logs — 133/133 tests |
+| 2026-07-28 | 6.2 `year` is now editable on existing entries (`EditEntryPanel` gains a Year field; `updateEntry` preserve-on-omit pattern extended to `year`) — 136/136 tests |

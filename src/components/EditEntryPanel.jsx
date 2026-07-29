@@ -36,6 +36,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         progress:       entry.progress != null ? String(entry.progress) : '',
         progress_total: entry.progress_total != null ? String(entry.progress_total) : '',
         genres:    entry.genres ?? '',
+        year:      entry.year != null ? String(entry.year) : '',
       })
       window.db.getLogs(entry.id).then(setLogs)
       setLogOpen(false)
@@ -88,6 +89,7 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
       progress:       form.progress !== '' ? Number(form.progress) : 0,
       progress_total: form.progress_total !== '' ? Number(form.progress_total) : null,
       genres:    form.genres.trim() || null,
+      year:      form.year !== '' ? Number(form.year) : null,
     })
     setSaving(false)
     onUpdate(updated)
@@ -227,6 +229,18 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
 
             <div className="edit-two-col">
               <label className="edit-label">
+                Year <span className="subtle">(optional)</span>
+                <input
+                  type="number"
+                  min={1000} max={2999}
+                  className="edit-input"
+                  placeholder="e.g. 2021"
+                  value={form.year}
+                  onChange={e => set('year', e.target.value)}
+                />
+              </label>
+
+              <label className="edit-label">
                 Date {categoryVerbs(entry.category).past}
                 <input
                   type="date"
@@ -235,17 +249,17 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
                   onChange={e => set('date_read', e.target.value)}
                 />
               </label>
-
-              <label className="edit-label">
-                Cover URL
-                <input
-                  className="edit-input"
-                  placeholder="https://…"
-                  value={form.cover_url}
-                  onChange={e => set('cover_url', e.target.value)}
-                />
-              </label>
             </div>
+
+            <label className="edit-label">
+              Cover URL
+              <input
+                className="edit-input"
+                placeholder="https://…"
+                value={form.cover_url}
+                onChange={e => set('cover_url', e.target.value)}
+              />
+            </label>
 
             <label className="edit-label">
               Tags <span className="subtle">(comma-separated)</span>

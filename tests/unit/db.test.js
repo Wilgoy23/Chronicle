@@ -194,6 +194,25 @@ describe('updateEntry', () => {
     expect(updated.series_id).toBeNull()
     expect(updated.series).toBeNull()
   })
+
+  it('sets year on an entry that was added without one', () => {
+    const entry = addEntry({ category: 'movie', title: 'The Batman', status: 'completed' })
+    expect(entry.year).toBeNull()
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, year: 2022 })
+    expect(updated.year).toBe(2022)
+  })
+
+  it('clears year when passed an empty string', () => {
+    const entry   = addEntry({ category: 'movie', title: 'Dune', status: 'completed', year: 2021 })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, year: '' })
+    expect(updated.year).toBeNull()
+  })
+
+  it('preserves year when a caller omits it (e.g. drag-to-series)', () => {
+    const entry = addEntry({ category: 'movie', title: 'Dune', status: 'completed', year: 2021 })
+    const updated = updateEntry({ id: entry.id, title: entry.title, status: entry.status, series_id: null })
+    expect(updated.year).toBe(2021)
+  })
 })
 
 describe('progress tracking', () => {
