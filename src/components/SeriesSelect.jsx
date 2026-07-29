@@ -64,7 +64,7 @@ export default function SeriesSelect({ value, onChange, series = [], category, p
 
   return (
     <div className="series-select" ref={ref}>
-      <div className="series-select-box" onClick={() => { setOpen(o => !o); inputRef.current?.focus() }}>
+      <div className="series-select-box" onClick={() => { setOpen(true); inputRef.current?.focus() }}>
         <input
           ref={inputRef}
           type="text"
