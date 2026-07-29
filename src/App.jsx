@@ -5,6 +5,7 @@ import EditEntryPanel from './components/EditEntryPanel'
 import EntryCard from './components/EntryCard'
 import ListView from './components/ListView'
 import SearchModal from './components/SearchModal'
+import GlobalSearchModal from './components/GlobalSearchModal'
 import SeriesGroup from './components/SeriesGroup'
 import TimelineView from './components/TimelineView'
 import SettingsPage from './components/SettingsPage'
@@ -169,6 +170,7 @@ export default function App() {
   const [entries, setEntries]         = useState([])
   const [seriesList, setSeriesList]   = useState([])
   const [searchOpen, setSearchOpen]   = useState(false)
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [manualOpen, setManualOpen]   = useState(false)
   const [editingEntry, setEditingEntry] = useState(null)
   const [view, setViewState]          = useState(loadView)
@@ -275,29 +277,43 @@ export default function App() {
     }
   }, [activeCat?.id])
 
-  // Global keyboard shortcuts: Esc closes the topmost overlay; Ctrl/Cmd+N adds; Ctrl/Cmd+K|F focuses search.
+  // Global keyboard shortcuts: Esc closes the topmost overlay; Ctrl/Cmd+N adds;
+  // Ctrl/Cmd+K|F focuses in-category search; Ctrl/Cmd+Shift+K opens cross-category search.
   useEffect(() => {
-    const anyOverlayOpen = searchOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete
+    const anyOverlayOpen = searchOpen || globalSearchOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete
     function onKey(e) {
       if (e.key === 'Escape') {
-        if (seriesToDelete)  { setSeriesToDelete(null); return }
-        if (editingEntry)    { setEditingEntry(null); return }
-        if (manualOpen)      { setManualOpen(false); setPendingSeriesId(null); return }
-        if (searchOpen)      { setSearchOpen(false); setPendingSeriesId(null); return }
-        if (releasesOpen)    { setReleasesOpen(false); return }
+        if (seriesToDelete)   { setSeriesToDelete(null); return }
+        if (editingEntry)     { setEditingEntry(null); return }
+        if (manualOpen)       { setManualOpen(false); setPendingSeriesId(null); return }
+        if (searchOpen)       { setSearchOpen(false); setPendingSeriesId(null); return }
+        if (globalSearchOpen) { setGlobalSearchOpen(false); return }
+        if (releasesOpen)     { setReleasesOpen(false); return }
         return
       }
       if (!(e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
       if (key === 'n' && page === 'collection' && !anyOverlayOpen) {
         e.preventDefault(); openAdd()
+      } else if (key === 'k' && e.shiftKey && page === 'collection' && !anyOverlayOpen) {
+        e.preventDefault(); setGlobalSearchOpen(true)
       } else if ((key === 'k' || key === 'f') && page === 'collection' && !anyOverlayOpen) {
         e.preventDefault(); searchRef.current?.focus()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [searchOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, page])
+  }, [searchOpen, globalSearchOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, page])
+
+  // Jump from a global (cross-category) search hit to its own category tab + edit panel.
+  function handleGlobalSelect(entry) {
+    setCategory(entry.category)
+    setSeriesFilter(null)
+    setTagFilter(null)
+    setEditingEntry(entry)
+    setGlobalSearchOpen(false)
+    setSidebarOpen(false)
+  }
 
   function refreshSeriesList() {
     window.db.getSeries(activeCat.id).then(setSeriesList)
@@ -815,6 +831,14 @@ export default function App() {
               )}
             </div>
 
+            <button
+              className="global-search-btn"
+              onClick={() => setGlobalSearchOpen(true)}
+              title="Search every category (Ctrl+Shift+K)"
+            >
+              {ICONS.search} All categories
+            </button>
+
             {tagFilter && (
               <button
                 className="tag-filter-active"
@@ -941,6 +965,13 @@ export default function App() {
             onAdd={handleSearchAdd}
             onAddManually={() => { setSearchOpen(false); setManualOpen(true) }}
             onClose={() => { setSearchOpen(false); setPendingSeriesId(null) }}
+          />
+
+          <GlobalSearchModal
+            open={globalSearchOpen}
+            categories={visibleCats}
+            onSelect={handleGlobalSelect}
+            onClose={() => setGlobalSearchOpen(false)}
           />
 
           <AddEntryPanel

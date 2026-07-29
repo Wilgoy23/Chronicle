@@ -15,7 +15,7 @@
 |---|------|--------|----------|--------|
 | 6.1 | Re-watch/re-read logs missing from export/import | 5.2 | P1 | ✅ |
 | 6.2 | Edit existing entry's `year` | 5.7 | P2 | ✅ |
-| 6.3 | Global cross-category search | 1.1 | P2 | ⬜ |
+| 6.3 | Global cross-category search | 1.1 | P2 | ✅ |
 | 6.4 | Insights: per-series average rating | 3.1 | P3 | ⬜ |
 | 6.5 | Insights: per-month heat strip | 3.1 | P3 | ⬜ |
 | 6.6 | Non-Chronicle CSV import mappers (Goodreads/MAL/Letterboxd) | 3.3 | P3 | ⬜ |
@@ -111,25 +111,57 @@ rebuilt back to the Electron ABI (`@electron/rebuild -f -o better-sqlite3`,
 "✔ Rebuild Complete"). GUI not driven headlessly — change mirrors the proven
 progress/genres edit-field pattern.
 
-### 6.3 Global cross-category search — `P2`
+### 6.3 Global cross-category search — ✅ Done `P2`
 
 Deferred stretch from 1.1. Search is scoped to the active category's filter strip;
 there's no way to search "did I ever log this title" across Books/Anime/Movies/etc.
 at once.
 
 **Requirements**
-- [ ] A global search entry point (e.g. `Ctrl+Shift+K`, or a mode toggle inside the
+- [x] A global search entry point (e.g. `Ctrl+Shift+K`, or a mode toggle inside the
       existing Ctrl+K search box) that queries all categories
-- [ ] Results grouped by category, each result jumps to that category + opens the
+- [x] Results grouped by category, each result jumps to that category + opens the
       entry's edit panel
-- [ ] Reuses the existing match rule (title / series name / notes, case-insensitive)
+- [x] Reuses the existing match rule (title / series name / notes, case-insensitive)
 
 **Acceptance:** typing a title that exists only in a non-active category surfaces it
-with a visible category grouping, and selecting it switches tabs and opens the entry.
+with a visible category grouping, and selecting it switches tabs and opens the entry. ✅
 
-**Touches:** `src/App.jsx` (search state generalization), a new results-list UI
-(modal or expanded panel), `electron/db.js` if server-side filtering becomes worth it
-at larger scale (client-side is likely still fine).
+**Implementation notes:**
+- New `GlobalSearchModal.jsx`, styled as a sibling of the existing `SearchModal`
+  (reuses its `.search-modal*` classes) rather than a mode toggle inside the local
+  filter box — keeping the two concerns (filter-in-place vs. jump-to-elsewhere)
+  visually distinct felt clearer than overloading one input's meaning.
+- On open, it fetches every entry in one call — `window.db.getEntries()` with no
+  `category` argument, which `getEntries()` (`electron/db.js`) already treats as
+  "no `WHERE category`," so no new IPC/DB code was needed. Client-side filtering
+  reuses the exact predicate from `App.jsx`'s existing per-category `filteredEntries`
+  (title / series / notes, case-insensitive `includes`), then groups matches by
+  category, in the same order as the sidebar's `visibleCats`.
+- Entry point: a new "All categories" button at the right end of the filter strip
+  (`.global-search-btn`, next to the existing search box), plus `Ctrl/Cmd+Shift+K`
+  wired into `App.jsx`'s existing global keydown handler (checked before the plain
+  `Ctrl+K`/`Ctrl+F` case so Shift isn't swallowed by the local-focus shortcut).
+  `globalSearchOpen` was added to the overlay-tracking state so Escape closes it and
+  it participates in the "any overlay open" guard the same way `searchOpen` does.
+- Selecting a result (`handleGlobalSelect`) switches the active category
+  (`setCategory(entry.category)`), clears series/tag filters, and opens
+  `EditEntryPanel` with the selected entry directly — since `EditEntryPanel` is
+  driven by the `entry` prop (not a lookup into the category's `entries` array), it
+  renders correctly even before the newly-active category's own `entries`/`seriesList`
+  finish refetching.
+- No new pure/testable logic was extracted — the match rule is a direct reuse of the
+  existing inline filter, and the app has no component-level test harness (all
+  existing tests target `electron/db.js` and pure helpers in `src/*.js`/`App.jsx`),
+  consistent with other view-only components (`ListView`, `TimelineView`,
+  `SeriesGroup`) having no dedicated test file.
+
+**Verification.** `npm test` → **136/136 pass** (unchanged — no new pure logic to
+unit test; this is a UI-only addition composing the existing `getEntries()` and
+filter predicate). `vite build` clean (223.51 kB JS / 69.66 kB CSS). better-sqlite3
+rebuilt back to the Electron ABI (`@electron/rebuild -f -o better-sqlite3`,
+"✔ Rebuild Complete"). GUI not driven headlessly — verified by code inspection
+against the acceptance criteria (entry point, grouping, jump-to-entry, match rule).
 
 ### 6.4 Insights: per-series average rating — `P3`
 
@@ -214,3 +246,4 @@ technically non-zero-alpha) in light mode, with no dark-mode regression.
 | 2026-07-28 | Document created — captures items explicitly deferred during PRD.md milestones 1–5, prioritized by data-loss risk first (6.1), then usability gaps, then cosmetic/stretch items |
 | 2026-07-28 | 6.1 Re-watch/re-read logs now included in JSON export/import (`logs` array, `entry_id` remapped via id map, backward-compatible with pre-6.1 exports); binary backup/restore confirmed to already preserve logs — 133/133 tests |
 | 2026-07-28 | 6.2 `year` is now editable on existing entries (`EditEntryPanel` gains a Year field; `updateEntry` preserve-on-omit pattern extended to `year`) — 136/136 tests |
+| 2026-07-29 | 6.3 Global cross-category search shipped (`GlobalSearchModal`, "All categories" button + `Ctrl/Cmd+Shift+K`, groups matches by category and jumps to the entry's edit panel) — 136/136 tests |

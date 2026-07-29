@@ -821,6 +821,29 @@ body {
 }
 .filter-search-clear:hover { color: var(--text); }
 
+.global-search-btn {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.765rem;
+  font-weight: 500;
+  gap: 0.35rem;
+  padding: 0.26rem 0.7rem;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.global-search-btn:hover {
+  background: var(--surface2);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+}
+
 /* ═══════════════════════════════════════════════════════════
    GRID
    ══════════════════════════════════════════════════════════ */
@@ -1849,6 +1872,22 @@ body {
 .search-modal-sub { color: var(--text-dim); font-size: 0.76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-modal-meta { color: var(--text-mute); font-size: 0.7rem; }
 .search-modal-hint { color: var(--text-mute); font-size: 0.83rem; padding: 2.5rem; text-align: center; }
+
+/* Cross-category results, grouped under a per-category label (GlobalSearchModal) */
+.gsearch-group { list-style: none; }
+.gsearch-group-label {
+  align-items: center;
+  color: var(--accent);
+  display: flex;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 0.4rem;
+  letter-spacing: 0.02em;
+  padding: 0.6rem 0.75rem 0.3rem;
+  text-transform: uppercase;
+}
+.gsearch-group-count { color: var(--text-mute); font-weight: 500; text-transform: none; }
+.gsearch-group-list { list-style: none; margin: 0; padding: 0; }
 
 .search-add-btn {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
