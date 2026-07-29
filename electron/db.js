@@ -366,7 +366,9 @@ function getAllSeries() {
   return db.prepare('SELECT id, category, name, created_at FROM series ORDER BY category, name').all()
 }
 
-// A full, portable snapshot of the library (all entries + series, every column).
+// A full, portable snapshot of the library (all entries + series + re-watch/
+// re-read logs, every column). Logs are keyed by their *export-time* entry_id;
+// importData remaps that to the freshly-inserted entry's new id.
 function exportData() {
   return {
     format:     'chronicle-export',
@@ -374,13 +376,17 @@ function exportData() {
     exportedAt: new Date().toISOString(),
     entries:    db.prepare(`${ENTRY_SELECT} ORDER BY e.id`).all(),
     series:     getAllSeries(),
+    logs:       db.prepare('SELECT id, entry_id, date, rating, notes FROM logs ORDER BY entry_id, id').all(),
   }
 }
 
 // Ingest a Chronicle export (from exportData). Series are matched/created by
 // (category, name) in the *target* DB, so ids remap cleanly into any install.
 // mode 'merge' (default) skips entries whose title already exists in the same
-// category; original created_at / date_read are preserved. Returns counts.
+// category; original created_at / date_read are preserved. Logs (re-watch/
+// re-read history) are re-keyed from their export-time entry_id to the newly
+// inserted entry's id — skipped entries (dupes) simply drop their logs, same
+// as the entry itself was never imported. Returns counts.
 function importData(data, { mode = 'merge' } = {}) {
   if (!data || data.format !== 'chronicle-export' || !Array.isArray(data.entries)) {
     return { ok: false, error: 'That file is not a Chronicle JSON export.' }
@@ -397,9 +403,13 @@ function importData(data, { mode = 'merge' } = {}) {
       (@category, @title, @status, @rating, @notes, @cover_url, @series_id, @date_read,
        @source, @source_id, @progress, @progress_total, @description, @genres, @year, @created_at)
   `)
+  const insertLog = db.prepare(
+    'INSERT INTO logs (entry_id, date, rating, notes) VALUES (?, ?, ?, ?)'
+  )
 
   const seriesBefore = db.prepare('SELECT COUNT(*) AS n FROM series').get().n
-  let imported = 0, skipped = 0
+  let imported = 0, skipped = 0, logsImported = 0
+  const idMap = new Map() // export-time entry id -> newly inserted entry id
 
   const run = db.transaction(() => {
     // Seed the series table first so even empty series carry over.
@@ -418,7 +428,7 @@ function importData(data, { mode = 'merge' } = {}) {
         series_id = findSeries.get(e.category, e.series)?.id ?? null
       }
 
-      insertEntry.run({
+      const result = insertEntry.run({
         category:       e.category,
         title:          e.title,
         status:         e.status ?? 'completed',
@@ -436,13 +446,23 @@ function importData(data, { mode = 'merge' } = {}) {
         year:           e.year != null && e.year !== '' ? Number(e.year) : null,
         created_at:     e.created_at ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
       })
+      if (e.id != null) idMap.set(e.id, result.lastInsertRowid)
       imported++
+    }
+
+    // Older exports (pre-6.1) have no `logs` key — treat that as "no logs," not an error.
+    for (const l of (Array.isArray(data.logs) ? data.logs : [])) {
+      if (!l || l.entry_id == null) continue
+      const newEntryId = idMap.get(l.entry_id)
+      if (newEntryId == null) continue // parent entry wasn't imported (dupe-skipped)
+      insertLog.run(newEntryId, l.date ?? null, l.rating ?? null, l.notes ?? '')
+      logsImported++
     }
   })
   run()
 
   const seriesAfter = db.prepare('SELECT COUNT(*) AS n FROM series').get().n
-  return { ok: true, imported, skipped, seriesAdded: seriesAfter - seriesBefore }
+  return { ok: true, imported, skipped, seriesAdded: seriesAfter - seriesBefore, logsImported }
 }
 
 module.exports = {

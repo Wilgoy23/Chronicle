@@ -445,6 +445,7 @@ const EXPORT_MSG = {
   restore: ()  => 'Library restored.',
   import:  res => `Imported ${res.imported} ${res.imported === 1 ? 'entry' : 'entries'}`
     + (res.skipped ? `, skipped ${res.skipped} duplicate${res.skipped === 1 ? '' : 's'}` : '')
+    + (res.logsImported ? `, ${res.logsImported} re-watch/re-read log${res.logsImported === 1 ? '' : 's'}` : '')
     + '. Reloading…',
 }
 

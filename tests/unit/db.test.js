@@ -300,6 +300,17 @@ describe('exportData', () => {
     expect(dune.series).toBe('Dune')
     expect(dune.rating).toBe(9)
   })
+
+  it('includes re-watch/re-read logs, keyed by their entry id', () => {
+    const dune = addEntry({ category: 'book', title: 'Dune', status: 'completed', rating: 9 })
+    addLog({ entry_id: dune.id, date: '2026-02-01', rating: 10, notes: 'Reread' })
+
+    const data = exportData()
+    expect(data.logs).toHaveLength(1)
+    expect(data.logs[0].entry_id).toBe(dune.id)
+    expect(data.logs[0].rating).toBe(10)
+    expect(data.logs[0].notes).toBe('Reread')
+  })
 })
 
 describe('importData', () => {
@@ -358,6 +369,49 @@ describe('importData', () => {
     expect(getAllSeries().map(s => s.name)).toContain('Empty Series')
   })
 
+  it('carries re-watch/re-read logs over, remapped to the new entry id', () => {
+    const dune = addEntry({ category: 'book', title: 'Dune', status: 'completed', rating: 9 })
+    addLog({ entry_id: dune.id, date: '2026-02-01', rating: 10, notes: 'Reread' })
+    addLog({ entry_id: dune.id, date: '2026-03-01', rating: 8,  notes: 'Third time' })
+    const snapshot = exportData()
+
+    initDb(':memory:')
+    const res = importData(snapshot)
+    expect(res.logsImported).toBe(2)
+
+    const [imported] = getEntries()
+    expect(imported.log_count).toBe(2)
+    const logs = getLogs(imported.id)
+    expect(logs).toHaveLength(2)
+    expect(logs.map(l => l.notes).sort()).toEqual(['Reread', 'Third time'])
+    // remapped to the fresh entry id, not the export-time id
+    expect(logs.every(l => l.entry_id === imported.id)).toBe(true)
+  })
+
+  it('imports cleanly when the export predates the logs field', () => {
+    addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    const snapshot = exportData()
+    delete snapshot.logs // simulate a pre-6.1 export
+
+    initDb(':memory:')
+    const res = importData(snapshot)
+    expect(res.ok).toBe(true)
+    expect(res.logsImported).toBe(0)
+  })
+
+  it('drops logs belonging to a dupe-skipped entry rather than orphaning them', () => {
+    const dune = addEntry({ category: 'book', title: 'Dune', status: 'completed' })
+    addLog({ entry_id: dune.id, date: '2026-02-01', rating: 10, notes: 'Reread' })
+    const snapshot = exportData()
+
+    // Import back into the SAME db — Dune is a title dupe and gets skipped.
+    const res = importData(snapshot)
+    expect(res.skipped).toBe(1)
+    expect(res.logsImported).toBe(0)
+    // the original entry's own log is untouched
+    expect(getLogs(dune.id)).toHaveLength(1)
+  })
+
   it('rejects a non-Chronicle payload', () => {
     expect(importData({ foo: 'bar' }).ok).toBe(false)
     expect(importData(null).ok).toBe(false)
@@ -377,8 +431,9 @@ describe('backup / restore round-trip', () => {
     try {
       initDb(dbPath)
       const s = addSeries('book', 'Dune')
-      addEntry({ category: 'book',  title: 'Dune',   status: 'completed',   rating: 9, series_id: s.id, progress: 0, progress_total: null })
+      const dune = addEntry({ category: 'book',  title: 'Dune',   status: 'completed',   rating: 9, series_id: s.id, progress: 0, progress_total: null })
       addEntry({ category: 'anime', title: 'Naruto', status: 'in_progress', rating: null, progress: 5, progress_total: 220 })
+      addLog({ entry_id: dune.id, date: '2026-02-01', rating: 10, notes: 'Reread' })
       const before = getEntries()
 
       // Back up, then wipe everything.
@@ -397,6 +452,11 @@ describe('backup / restore round-trip', () => {
       expect(after.map(e => e.title).sort()).toEqual(['Dune', 'Naruto'])
       expect(getAllSeries()).toHaveLength(1)
       expect(after.find(e => e.title === 'Dune').series).toBe('Dune')
+      // the binary backup/restore path (unlike JSON export) is a full file copy,
+      // so re-watch/re-read logs already survive it untouched
+      const restoredDune = after.find(e => e.title === 'Dune')
+      expect(restoredDune.log_count).toBe(1)
+      expect(getLogs(restoredDune.id)[0].notes).toBe('Reread')
     } finally {
       closeDb()
       try { fs.rmSync(dir, { recursive: true, force: true }) } catch {}
