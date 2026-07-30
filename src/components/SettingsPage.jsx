@@ -449,6 +449,7 @@ const EXPORT_MSG = {
     + '. Reloading…',
 }
 EXPORT_MSG.goodreads = EXPORT_MSG.import
+EXPORT_MSG.mal       = EXPORT_MSG.import
 
 function DataSection() {
   const [stats, setStats]   = useState(null)
@@ -472,7 +473,7 @@ function DataSection() {
       if (res?.ok) {
         setMsg({ ok: true, text: (EXPORT_MSG[action] ?? (() => 'Done.'))(res) })
         // Import mutates the library — reload so the grid/insights pick it up.
-        if ((action === 'import' || action === 'goodreads') && res.imported > 0) {
+        if (['import', 'goodreads', 'mal'].includes(action) && res.imported > 0) {
           setTimeout(() => window.location.reload(), 1400)
           return
         }
@@ -520,13 +521,15 @@ function DataSection() {
           JSON is a full snapshot (entries + series); CSV is a spreadsheet of entries;
           a database backup can be restored later to replace your library.
           Importing a JSON export merges its entries in, skipping ones you already have.
-          A Goodreads CSV export imports as Books the same way.
+          A Goodreads CSV export imports as Books, and a MyAnimeList export imports as
+          Anime/Manga, the same way.
         </p>
         <div className="data-btn-row">
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('json',      () => window.data.exportJson())}>Export JSON</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('csv',       () => window.data.exportCsv())}>Export CSV</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('import',    () => window.data.importJson())}>Import JSON…</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('goodreads', () => window.data.importGoodreads())}>Import Goodreads CSV…</button>
+          <button className="data-action-btn" disabled={!!busy} onClick={() => run('mal',       () => window.data.importMal())}>Import MyAnimeList…</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('backup',    () => window.data.backup())}>Back up database</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('restore',   () => window.data.restore())}>Restore from backup…</button>
         </div>

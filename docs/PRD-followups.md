@@ -241,16 +241,16 @@ clean (226.34 kB JS / 70.72 kB CSS). better-sqlite3 rebuilt back to the Electron
 GUI not driven headlessly — verified by code inspection against the acceptance
 criteria.
 
-### 6.6 Non-Chronicle CSV import mappers — 🟨 In progress (Goodreads shipped) `P3`
+### 6.6 Non-Chronicle CSV import mappers — 🟨 In progress (Goodreads + MAL shipped) `P3`
 
 Deferred from 3.3. Only Chronicle's own JSON export can be imported today. Each
 external source needs its own column-mapping layer on top of the existing
 `importData` core. Shipped incrementally per the requirement below — Goodreads
-first, MAL/Letterboxd deferred until requested.
+first, then MAL; Letterboxd deferred until requested.
 
 **Requirements**
 - [x] Goodreads CSV → Books (title, author→notes?, rating, date read, shelf→status)
-- [ ] MyAnimeList (MAL) export → Anime/Manga
+- [x] MyAnimeList (MAL) export → Anime/Manga
 - [ ] Letterboxd CSV → Movies
 - [x] Each mapper normalizes its source format into the shape `importData` already
       accepts, then reuses the existing merge/dedupe logic unchanged
@@ -306,9 +306,65 @@ the documented/well-known Goodreads CSV column names, not a live download, so if
 real export uses different column headers or edge-case values this may need a
 follow-up fix once tried against an actual file.
 
-**Touches:** `electron/csv.js` (`parseCsv`), new `electron/importers/goodreads.js`,
-`electron/main.js` (`data:importGoodreads`), `electron/preload.js`,
-`src/components/SettingsPage.jsx`, `electron/db.js` (`importData` reused as-is).
+**Implementation notes (MAL slice):**
+- New `electron/importers/mal.js` (`mapMal(xmlText)`). MAL's export is XML, not
+  CSV, despite this item's title — its native format
+  (`myanimelist.net/panel.php?go=export`) is a `<myanimelist>` root of repeated,
+  non-nested `<anime>`/`<manga>` blocks with simple (sometimes CDATA-wrapped)
+  text-content child tags, so rather than pull in an XML parser dependency a
+  small purpose-built block/field extractor was written, mirroring `parseCsv`'s
+  hand-rolled approach for Goodreads. Confirmed the real field names
+  (`series_animedb_id`/`series_mangadb_id`, `my_watched_episodes`/
+  `my_read_chapters`, `series_episodes`/`series_chapters`, `my_status`,
+  `my_score`, `my_finish_date`, `my_comments`) via web research against
+  MAL-format-generating tools rather than a live export, same caveat as
+  Goodreads below.
+- **Status mapping (5 MAL statuses → Chronicle's 3):** `Watching`/`Reading` and
+  `On-Hold` → `in_progress` (an on-hold title still has episodes/chapters logged
+  and is nominally paused mid-way, not un-started); `Completed` → `completed`;
+  `Dropped` → `completed` rather than being discarded, so the entry and its
+  rating/comments survive the import instead of silently vanishing — the
+  alternative (skipping dropped entries) would lose data the user likely still
+  wants tracked; `Plan to Watch`/`Plan to Read` → `planned`. `my_status` string
+  spelling has varied across MAL export versions ("On-Hold" vs "On Hold" vs
+  "on_hold" — research turned up inconsistent examples), so `normalizeStatus`
+  strips spaces/hyphens/underscores and lowercases before matching, making the
+  mapping robust to whichever variant a real file uses.
+- `my_score` is already MAL's native 1–10 scale (0 = unrated), so unlike
+  Goodreads' 5-star conversion this only needed a `0 → null` guard, no scaling.
+  `my_comments` maps to `notes` (a closer analog than Goodreads' author
+  fallback, since MAL's comments field is genuinely free-form personal notes).
+  `date_read` is only carried through for `completed` entries, from
+  `my_finish_date` — MAL leaves unset dates as the literal string
+  `"0000-00-00"` rather than blank, which `malDate()` also treats as null.
+  `progress`/`progress_total` come from the watched-episodes/read-chapters and
+  series-total fields (`0` total, common for a still-airing/ongoing series in
+  MAL's own data, is treated as "unknown" → `null`, not `0`).
+- IPC/preload/Settings UI follow the exact `data:importGoodreads` pattern
+  (`data:importMal` → `window.data.importMal()` → "Import MyAnimeList…" button),
+  with one addition: MAL's own export downloads gzip-compressed
+  (`animelist_<user>.xml.gz`); `data:importMal` sniffs the gzip magic bytes
+  (`0x1f 0x8b`) and transparently `zlib.gunzipSync`s the file before parsing, so
+  users don't have to manually extract it first regardless of whether their
+  browser already auto-extracted it on download.
+
+**Verification.** `npm test` → **168/168 pass** (+12: `malDate` real-date/
+sentinel/blank cases; `normalizeStatus` covers every known status string across
+spacing/hyphenation/case variants plus an unrecognized-status fallback; `mapMal`
+covers a full completed-anime mapping with CDATA title/comments, 0-score→null,
+date_read suppressed for non-completed entries, unknown/0 series total→null,
+title-less blocks skipped, manga blocks mapped to category `manga` via the
+chapters fields, and multiple sibling entries parsed independently including the
+Dropped→completed status mapping). `vite build` clean (226.82 kB JS / 70.72 kB
+CSS). better-sqlite3 rebuilt back to the Electron ABI. **Not verified against a
+real MAL export file** — same caveat as the Goodreads slice: built from
+documented/reverse-engineered field names and status strings, not a live
+download, so a real export's exact quirks may need a follow-up fix.
+
+**Touches:** `electron/csv.js` (`parseCsv`), new `electron/importers/goodreads.js`
+and `electron/importers/mal.js`, `electron/main.js` (`data:importGoodreads`,
+`data:importMal`), `electron/preload.js`, `src/components/SettingsPage.jsx`,
+`electron/db.js` (`importData` reused as-is).
 
 ### 6.7 Light theme: low-alpha white borders/scrollbar tints — ✅ Done `P3`
 
@@ -377,3 +433,4 @@ untouched dark-mode values are numerically identical to before (same alpha under
 | 2026-07-29 | 6.5 Insights per-month heat strip shipped (`getYearMonth` + `computeStats.perMonth`; new `HeatStrip` component, one row per year with accent-opacity cells) — 142/142 tests |
 | 2026-07-29 | 6.7 Light theme border/scrollbar audit: introduced `--border3`/`--scrollbar-thumb`/`--scrollbar-thumb-hover` tokens and converted remaining raw white-literal borders/scrollbars on normal-surface components (Settings inputs, color swatch, Add Entry panel fields, timeline divider, search spinner) — deliberately left literals on fixed-dark glass modals/cover-art overlays unchanged — 142/142 tests, CSS-only |
 | 2026-07-30 | 6.6 Goodreads CSV import shipped (first of three planned mappers): `parseCsv` added to `electron/csv.js`, new `electron/importers/goodreads.js` maps title/author/rating/date/shelf into the existing `importData` shape, "Import Goodreads CSV…" button in Settings — not yet verified against a real downloaded export — 156/156 tests |
+| 2026-07-30 | 6.6 MyAnimeList XML import shipped (second mapper): new `electron/importers/mal.js` with a hand-rolled block/field extractor (no XML dependency added), 5-status→3-status mapping (On-Hold→in_progress, Dropped→completed), transparent gzip support for MAL's native `.xml.gz` download, "Import MyAnimeList…" button in Settings — not yet verified against a real downloaded export — 168/168 tests |

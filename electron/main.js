@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu, Notification, dialog } = require('electron')
 const path   = require('path')
 const fs     = require('fs')
+const zlib   = require('zlib')
 const {
   initDb, getReleases, setReleaseStatus, unseenReleaseCount,
   exportData, importData, getDbPath, closeDb, validateBackupFile, backupTo,
@@ -9,6 +10,7 @@ const { registerHandlers } = require('./ipc')
 const { runReleaseScan }   = require('./releaseChecker')
 const { toCsv }            = require('./csv')
 const { mapGoodreads }     = require('./importers/goodreads')
+const { mapMal }           = require('./importers/mal')
 
 let mainWindow = null
 
@@ -163,6 +165,25 @@ app.whenReady().then(() => {
     try {
       const data = mapGoodreads(fs.readFileSync(filePaths[0], 'utf8'))
       return importData(data)
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('data:importMal', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import MyAnimeList export',
+      // MAL's own export downloads gzipped (animelist_<user>.xml.gz); many
+      // browsers auto-extract it to plain .xml on save, so both are accepted.
+      filters: [{ name: 'MyAnimeList export', extensions: ['xml', 'gz'] }],
+      properties: ['openFile'],
+    })
+    if (canceled || !filePaths?.length) return { ok: false, canceled: true }
+    try {
+      const raw = fs.readFileSync(filePaths[0])
+      const isGzip = raw[0] === 0x1f && raw[1] === 0x8b
+      const xml = (isGzip ? zlib.gunzipSync(raw) : raw).toString('utf8')
+      return importData(mapMal(xml))
     } catch (err) {
       return { ok: false, error: String(err) }
     }
