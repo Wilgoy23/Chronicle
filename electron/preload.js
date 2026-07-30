@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('data', {
   exportJson: () => ipcRenderer.invoke('data:exportJson'),
   exportCsv:  () => ipcRenderer.invoke('data:exportCsv'),
   importJson: () => ipcRenderer.invoke('data:importJson'),
+  importGoodreads: () => ipcRenderer.invoke('data:importGoodreads'),
   backup:     () => ipcRenderer.invoke('data:backup'),
   restore:    () => ipcRenderer.invoke('data:restore'),
 })

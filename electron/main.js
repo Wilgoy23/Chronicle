@@ -8,6 +8,7 @@ const {
 const { registerHandlers } = require('./ipc')
 const { runReleaseScan }   = require('./releaseChecker')
 const { toCsv }            = require('./csv')
+const { mapGoodreads }     = require('./importers/goodreads')
 
 let mainWindow = null
 
@@ -149,6 +150,21 @@ app.whenReady().then(() => {
       return importData(data)
     } catch (err) {
       return { ok: false, error: err instanceof SyntaxError ? 'That file is not valid JSON.' : String(err) }
+    }
+  })
+
+  ipcMain.handle('data:importGoodreads', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Goodreads CSV export',
+      filters: [{ name: 'CSV', extensions: ['csv'] }],
+      properties: ['openFile'],
+    })
+    if (canceled || !filePaths?.length) return { ok: false, canceled: true }
+    try {
+      const data = mapGoodreads(fs.readFileSync(filePaths[0], 'utf8'))
+      return importData(data)
+    } catch (err) {
+      return { ok: false, error: String(err) }
     }
   })
 

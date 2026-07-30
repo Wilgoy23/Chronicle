@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toCsv, csvCell, CSV_COLUMNS } from '../../electron/csv.js'
+import { toCsv, csvCell, CSV_COLUMNS, parseCsv } from '../../electron/csv.js'
 
 describe('csvCell', () => {
   it('renders null/undefined as empty', () => {
@@ -39,5 +39,33 @@ describe('toCsv', () => {
   it('escapes a title containing a comma', () => {
     const csv = toCsv([{ title: 'Fire, and Blood' }])
     expect(csv.split('\r\n')[1]).toContain('"Fire, and Blood"')
+  })
+})
+
+describe('parseCsv', () => {
+  it('parses a simple header + rows into keyed objects', () => {
+    expect(parseCsv('a,b\r\n1,2\r\n3,4')).toEqual([{ a: '1', b: '2' }, { a: '3', b: '4' }])
+  })
+
+  it('handles quoted fields containing commas', () => {
+    expect(parseCsv('Title,Author\n"Fire, and Blood",GRRM')).toEqual([
+      { Title: 'Fire, and Blood', Author: 'GRRM' },
+    ])
+  })
+
+  it('unescapes doubled quotes inside a quoted field', () => {
+    expect(parseCsv('a\n"she said ""hi"""')).toEqual([{ a: 'she said "hi"' }])
+  })
+
+  it('handles an embedded newline inside a quoted field', () => {
+    expect(parseCsv('a,b\n"line1\nline2",x')).toEqual([{ a: 'line1\nline2', b: 'x' }])
+  })
+
+  it('skips a trailing blank line', () => {
+    expect(parseCsv('a,b\r\n1,2\r\n')).toEqual([{ a: '1', b: '2' }])
+  })
+
+  it('returns an empty array for an empty string', () => {
+    expect(parseCsv('')).toEqual([])
   })
 })

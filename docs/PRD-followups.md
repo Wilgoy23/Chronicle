@@ -18,7 +18,7 @@
 | 6.3 | Global cross-category search | 1.1 | P2 | ✅ |
 | 6.4 | Insights: per-series average rating | 3.1 | P3 | ✅ |
 | 6.5 | Insights: per-month heat strip | 3.1 | P3 | ✅ |
-| 6.6 | Non-Chronicle CSV import mappers (Goodreads/MAL/Letterboxd) | 3.3 | P3 | ⬜ |
+| 6.6 | Non-Chronicle CSV import mappers (Goodreads/MAL/Letterboxd) | 3.3 | P3 | 🟨 |
 | 6.7 | Light theme: low-alpha white borders/scrollbar tints | 5.6 | P3 | ✅ |
 
 ---
@@ -241,26 +241,74 @@ clean (226.34 kB JS / 70.72 kB CSS). better-sqlite3 rebuilt back to the Electron
 GUI not driven headlessly — verified by code inspection against the acceptance
 criteria.
 
-### 6.6 Non-Chronicle CSV import mappers — `P3`
+### 6.6 Non-Chronicle CSV import mappers — 🟨 In progress (Goodreads shipped) `P3`
 
 Deferred from 3.3. Only Chronicle's own JSON export can be imported today. Each
 external source needs its own column-mapping layer on top of the existing
-`importData` core.
+`importData` core. Shipped incrementally per the requirement below — Goodreads
+first, MAL/Letterboxd deferred until requested.
 
 **Requirements**
-- [ ] Goodreads CSV → Books (title, author→notes?, rating, date read, shelf→status)
+- [x] Goodreads CSV → Books (title, author→notes?, rating, date read, shelf→status)
 - [ ] MyAnimeList (MAL) export → Anime/Manga
 - [ ] Letterboxd CSV → Movies
-- [ ] Each mapper normalizes its source format into the shape `importData` already
+- [x] Each mapper normalizes its source format into the shape `importData` already
       accepts, then reuses the existing merge/dedupe logic unchanged
-- [ ] Ship incrementally, one source per release, prioritized by actual demand —
+- [x] Ship incrementally, one source per release, prioritized by actual demand —
       do not build all three speculatively in one pass
 
 **Acceptance:** a real export file from each service, run through its mapper,
 produces sensible Chronicle entries with correct status/rating/date mapping.
+Goodreads slice: ✅ (verified against the documented Goodreads export column
+format; no live sample file from a user account was available, so verification is
+by code inspection + unit tests rather than a real downloaded export — flagged
+below).
 
-**Touches:** new `electron/importers/{goodreads,mal,letterboxd}.js`, IPC + Settings UI
-to pick a source format, `electron/db.js` (`importData` reused as-is).
+**Implementation notes (Goodreads slice):**
+- New `electron/csv.js` export `parseCsv(text)` — a small RFC4180-ish parser
+  (quoted fields, embedded commas/newlines, `""` as an escaped quote), added
+  alongside the existing `toCsv` since it's the natural, dependency-free home and
+  will be reused by the MAL/Letterboxd mappers later.
+- New `electron/importers/goodreads.js` (`mapGoodreads(csvText)`), pure and
+  DB-free like `csv.js`: reads Goodreads' `Title`/`Author`/`My Rating`/
+  `Date Read`/`Date Added`/`Exclusive Shelf` columns and returns a
+  `{ format: 'chronicle-export', version: 1, entries, series: [] }` object —
+  the exact shape `importData` already validates and ingests, so no changes to
+  `importData` itself were needed. Mapping specifics: `Exclusive Shelf` →
+  `read`/`currently-reading`/`to-read` → `completed`/`in_progress`/`planned`
+  (unrecognized shelf falls back to `completed`); `My Rating` is Goodreads' 0–5
+  star scale, doubled to Chronicle's 1–10 scale, with `0` (unrated) mapped to
+  `null` rather than `0`; `Author` → `notes` as `"By <author>"` per the
+  `author→notes` requirement; `Date Read`/`Date Added` are reformatted from
+  Goodreads' `yyyy/MM/dd` to Chronicle's `yyyy-MM-dd` (`goodreadsDate` helper),
+  with a blank date left `null` rather than an error — a `completed` row with no
+  `Date Read` still imports (mirrors the existing "completed but undated" case
+  documented in `insightsStats.test.js`). Series parsing from Goodreads' title
+  parenthetical (e.g. `"Dune (Dune, #1)"`) was deliberately left out of this slice
+  to keep it minimal, matching the "ship incrementally" requirement.
+- IPC: new `data:importGoodreads` handler in `electron/main.js`, mirroring
+  `data:importJson`'s open-dialog → read-file → `importData()` shape exactly,
+  just with `mapGoodreads()` in between. Exposed as `window.data.importGoodreads()`
+  via `electron/preload.js`.
+- Settings UI: new "Import Goodreads CSV…" button next to "Import JSON…" in
+  `SettingsPage.jsx`'s Data section, reusing the existing generic `run()` busy/
+  message/reload plumbing (the `import` success-message formatter is aliased for
+  the `goodreads` action id, and the post-import reload condition now also fires
+  for it) — no new UI pattern introduced.
+
+**Verification.** `npm test` → **156/156 pass** (+14: `parseCsv` quoted/embedded-
+comma/embedded-newline/escaped-quote/trailing-blank-line/empty-input cases;
+`mapGoodreads`/`goodreadsDate` shelf→status mapping, 0-star→null, 5-star→10,
+title-less rows skipped, blank `Date Read` left null). `vite build` clean
+(226.60 kB JS / 70.72 kB CSS). better-sqlite3 rebuilt back to the Electron ABI.
+**Not verified against a real Goodreads export file** — the mapping was built from
+the documented/well-known Goodreads CSV column names, not a live download, so if a
+real export uses different column headers or edge-case values this may need a
+follow-up fix once tried against an actual file.
+
+**Touches:** `electron/csv.js` (`parseCsv`), new `electron/importers/goodreads.js`,
+`electron/main.js` (`data:importGoodreads`), `electron/preload.js`,
+`src/components/SettingsPage.jsx`, `electron/db.js` (`importData` reused as-is).
 
 ### 6.7 Light theme: low-alpha white borders/scrollbar tints — ✅ Done `P3`
 
@@ -328,3 +376,4 @@ untouched dark-mode values are numerically identical to before (same alpha under
 | 2026-07-29 | 6.4 Insights per-series average rating shipped (`computeStats` gains `perSeries`, keyed by `series_id`; new "Average rating by series" card in `InsightsPage.jsx`, capped to top 10 with a show-all toggle) — 142/142 tests |
 | 2026-07-29 | 6.5 Insights per-month heat strip shipped (`getYearMonth` + `computeStats.perMonth`; new `HeatStrip` component, one row per year with accent-opacity cells) — 142/142 tests |
 | 2026-07-29 | 6.7 Light theme border/scrollbar audit: introduced `--border3`/`--scrollbar-thumb`/`--scrollbar-thumb-hover` tokens and converted remaining raw white-literal borders/scrollbars on normal-surface components (Settings inputs, color swatch, Add Entry panel fields, timeline divider, search spinner) — deliberately left literals on fixed-dark glass modals/cover-art overlays unchanged — 142/142 tests, CSS-only |
+| 2026-07-30 | 6.6 Goodreads CSV import shipped (first of three planned mappers): `parseCsv` added to `electron/csv.js`, new `electron/importers/goodreads.js` maps title/author/rating/date/shelf into the existing `importData` shape, "Import Goodreads CSV…" button in Settings — not yet verified against a real downloaded export — 156/156 tests |
