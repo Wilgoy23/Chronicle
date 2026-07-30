@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeStats, getYear } from '../../src/insightsStats.js'
+import { computeStats, getYear, getYearMonth } from '../../src/insightsStats.js'
 
 const CATS = [
   { id: 'book',  label: 'Books',  color: '#e8a838' },
@@ -12,9 +12,9 @@ const CATS = [
 const NOW = new Date('2026-06-15T00:00:00Z')
 
 const DATASET = [
-  { category: 'book',  status: 'completed',   rating: 8,    date_read: '2026-01-10' },
+  { category: 'book',  status: 'completed',   rating: 8,    date_read: '2026-01-10', series_id: 1, series: 'Mistborn' },
   { category: 'book',  status: 'completed',   rating: 6,    date_read: '2025-11-02' },
-  { category: 'anime', status: 'completed',   rating: 10,   date_read: '2026-03-20' },
+  { category: 'anime', status: 'completed',   rating: 10,   date_read: '2026-03-20', series_id: 2, series: 'Fullmetal Alchemist' },
   { category: 'anime', status: 'in_progress', rating: null, date_read: null },
   { category: 'movie', status: 'planned',     rating: null, date_read: null },
   { category: 'game',  status: 'completed',   rating: 4,    date_read: '2024-07-01' },
@@ -31,6 +31,18 @@ describe('getYear', () => {
   })
   it('returns null when neither is present', () => {
     expect(getYear({ date_read: null, created_at: null })).toBeNull()
+  })
+})
+
+describe('getYearMonth', () => {
+  it('prefers date_read', () => {
+    expect(getYearMonth({ date_read: '2026-01-10', created_at: '2020-05-05' })).toEqual({ year: '2026', month: 1 })
+  })
+  it('falls back to created_at', () => {
+    expect(getYearMonth({ date_read: null, created_at: '2023-05-05 12:00:00' })).toEqual({ year: '2023', month: 5 })
+  })
+  it('returns null when neither is present', () => {
+    expect(getYearMonth({ date_read: null, created_at: null })).toBeNull()
   })
 })
 
@@ -88,5 +100,34 @@ describe('computeStats', () => {
     const empty = computeStats([{ category: 'book', status: 'planned', rating: null }], CATS, NOW)
     expect(empty.avgOverall).toBeNull()
     expect(empty.perCategory).toEqual([])
+  })
+
+  it('averages ratings per series, sorted high to low, excluding entries with no series', () => {
+    expect(s.perSeries).toEqual([
+      { id: 2, name: 'Fullmetal Alchemist', category: 'anime', categoryLabel: 'Anime', color: '#c084fc', avg: 10, count: 1 },
+      { id: 1, name: 'Mistborn',            category: 'book',  categoryLabel: 'Books', color: '#e8a838', avg: 8,  count: 1 },
+    ])
+  })
+
+  it('sums multiple rated entries in the same series', () => {
+    const multi = computeStats([
+      { category: 'book', status: 'completed', rating: 8, series_id: 1, series: 'Mistborn' },
+      { category: 'book', status: 'completed', rating: 6, series_id: 1, series: 'Mistborn' },
+    ], CATS, NOW)
+    expect(multi.perSeries).toEqual([
+      { id: 1, name: 'Mistborn', category: 'book', categoryLabel: 'Books', color: '#e8a838', avg: 7, count: 2 },
+    ])
+  })
+
+  it('buckets completed entries per month within each year present', () => {
+    expect(s.perMonth).toEqual([
+      { year: '2024', months: expect.arrayContaining([{ month: 7, count: 1 }]) },
+      { year: '2025', months: expect.arrayContaining([{ month: 11, count: 1 }]) },
+      { year: '2026', months: expect.arrayContaining([{ month: 1, count: 1 }, { month: 3, count: 1 }]) },
+    ])
+    // months with no completions are present as zero, not omitted
+    const y2026 = s.perMonth.find(y => y.year === '2026')
+    expect(y2026.months).toHaveLength(12)
+    expect(y2026.months.find(m => m.month === 6).count).toBe(0)
   })
 })

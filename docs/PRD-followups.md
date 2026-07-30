@@ -16,10 +16,10 @@
 | 6.1 | Re-watch/re-read logs missing from export/import | 5.2 | P1 | ✅ |
 | 6.2 | Edit existing entry's `year` | 5.7 | P2 | ✅ |
 | 6.3 | Global cross-category search | 1.1 | P2 | ✅ |
-| 6.4 | Insights: per-series average rating | 3.1 | P3 | ⬜ |
-| 6.5 | Insights: per-month heat strip | 3.1 | P3 | ⬜ |
+| 6.4 | Insights: per-series average rating | 3.1 | P3 | ✅ |
+| 6.5 | Insights: per-month heat strip | 3.1 | P3 | ✅ |
 | 6.6 | Non-Chronicle CSV import mappers (Goodreads/MAL/Letterboxd) | 3.3 | P3 | ⬜ |
-| 6.7 | Light theme: low-alpha white borders/scrollbar tints | 5.6 | P3 | ⬜ |
+| 6.7 | Light theme: low-alpha white borders/scrollbar tints | 5.6 | P3 | ✅ |
 
 ---
 
@@ -163,39 +163,83 @@ rebuilt back to the Electron ABI (`@electron/rebuild -f -o better-sqlite3`,
 "✔ Rebuild Complete"). GUI not driven headlessly — verified by code inspection
 against the acceptance criteria (entry point, grouping, jump-to-entry, match rule).
 
-### 6.4 Insights: per-series average rating — `P3`
+### 6.4 Insights: per-series average rating — ✅ Done `P3`
 
 Deferred from 3.1. The category-level average-rating bars exist; a per-series
 breakdown (e.g. "your average rating for the *One Piece* series is 9.2") does not.
 
 **Requirements**
-- [ ] Extend `computeStats` (`src/insightsStats.js`) with a per-series average,
+- [x] Extend `computeStats` (`src/insightsStats.js`) with a per-series average,
       series with only unrated entries excluded (mirrors the existing per-category rule)
-- [ ] Surface as a sortable list/table in `InsightsPage.jsx` (likely below the
+- [x] Surface as a sortable list/table in `InsightsPage.jsx` (likely below the
       per-category bars), capped or paginated for users with many series
 
 **Acceptance:** a known test dataset with multiple series produces correct per-series
 averages, unit-tested in `tests/unit/insightsStats.test.js` the same way the existing
-per-category case is.
+per-category case is. ✅
 
-**Touches:** `src/insightsStats.js`, `src/components/InsightsPage.jsx` (or wherever
-Insights UI currently lives), test file.
+**Implementation notes:**
+- `computeStats` gains a `seriesAgg` map keyed by `series_id` (not name — series
+  names aren't guaranteed unique across categories), accumulated in the same loop
+  pass as `catAgg`, under the same `rating != null` guard. Only entries that have
+  both a rating and a `series_id`/`series` (the joined series name, already returned
+  by `getEntries`) contribute; unrated or series-less entries are excluded, exactly
+  mirroring the per-category rule.
+- Returned as `perSeries: [{ id, name, category, categoryLabel, color, avg, count }]`,
+  sorted high-to-low by average — same shape/sort as `perCategory`, plus series
+  identity fields so the UI can label and color each row.
+- `InsightsPage.jsx` renders it as a new "Average rating by series" card, reusing the
+  existing `.insights-hbars`/`.insights-hbar-row` direct-labeled horizontal-bar
+  pattern from per-category (no new chart primitive needed). Capped to the top 10 by
+  default via `SERIES_CAP`, with a "Show all N series" toggle (`showAllSeries` state)
+  satisfying the "capped or paginated" requirement — the list is already sorted by
+  average, so "sortable" is met by the existing ranking rather than adding
+  interactive multi-column sort, consistent with how per-category is presented.
 
-### 6.5 Insights: per-month heat strip — `P3`
+**Verification.** `npm test` → **142/142 pass** (+4: per-series averages sorted
+high-to-low excluding series-less entries; multiple rated entries in the same series
+are summed/averaged correctly, in addition to the getYearMonth tests added for 6.5).
+`vite build` clean (226.34 kB JS / 70.72 kB CSS). better-sqlite3 rebuilt back to the
+Electron ABI (`@electron/rebuild -f -o better-sqlite3`, "✔ Rebuild Complete"). GUI not
+driven headlessly — verified by code inspection against the acceptance criteria.
+
+### 6.5 Insights: per-month heat strip — ✅ Done `P3`
 
 Deferred from 3.1. The per-year completed-count bar chart exists; a finer-grained
 month-by-month heat strip (GitHub-contributions-style) does not.
 
 **Requirements**
-- [ ] `computeStats` gains a per-month-per-year bucket for completed entries
-- [ ] Render as a heat strip (color intensity by count) under or beside the per-year
+- [x] `computeStats` gains a per-month-per-year bucket for completed entries
+- [x] Render as a heat strip (color intensity by count) under or beside the per-year
       chart, reusing the dataviz-skill single-hue accent approach already used
       elsewhere on the page
 
 **Acceptance:** a known test dataset produces correct per-month counts; visually
-distinguishes months with 0 vs. many completions.
+distinguishes months with 0 vs. many completions. ✅
 
-**Touches:** `src/insightsStats.js`, `src/components/InsightsPage.jsx`, test file.
+**Implementation notes:**
+- New `getYearMonth(e)` export in `insightsStats.js`, sibling to the existing
+  `getYear(e)` (same `date_read` → `created_at` fallback, just also extracting the
+  month). `computeStats` buckets completed+dated entries into a `monthCounts` map
+  keyed `"year-month"`, alongside the existing `yearCounts` bucketing.
+- Returned as `perMonth: [{ year, months: [{ month: 1..12, count }] }]`, one row per
+  year already present in `yearCounts` (so, like `perYear`, only years with at least
+  one dated completion appear) — but unlike `yearCounts`, every month 1–12 is present
+  with an explicit `count: 0` rather than omitted, since the heat strip needs to
+  render "no activity" cells, not skip them.
+- `InsightsPage.jsx` renders a new `HeatStrip` component: one row per year, 12 cells
+  (J–D labels below), color = the page's single `accent` at an opacity scaled to that
+  year's own peak month (`0.18 + (count/peak)*0.82`, empty cells left at the neutral
+  `--bg3` track color) — the same single-hue-accent approach `BarChart` already uses,
+  just via opacity instead of height.
+
+**Verification.** `npm test` → **142/142 pass** (+4: `getYearMonth` prefers
+`date_read`, falls back to `created_at`, returns null when neither is present; and a
+`computeStats` assertion that `perMonth` buckets completions correctly per year,
+including zero-count months within a year that has other activity). `vite build`
+clean (226.34 kB JS / 70.72 kB CSS). better-sqlite3 rebuilt back to the Electron ABI.
+GUI not driven headlessly — verified by code inspection against the acceptance
+criteria.
 
 ### 6.6 Non-Chronicle CSV import mappers — `P3`
 
@@ -218,7 +262,7 @@ produces sensible Chronicle entries with correct status/rating/date mapping.
 **Touches:** new `electron/importers/{goodreads,mal,letterboxd}.js`, IPC + Settings UI
 to pick a source format, `electron/db.js` (`importData` reused as-is).
 
-### 6.7 Light theme: low-alpha white borders/scrollbar tints — `P3`
+### 6.7 Light theme: low-alpha white borders/scrollbar tints — ✅ Done `P3`
 
 Deferred from 5.6. The main light-theme pass fixed all body-text and surface
 regressions; a cosmetic gap remains where low-alpha `rgba(255,255,255,α)` borders
@@ -227,13 +271,47 @@ light backgrounds. Not a readability bug — no text is affected — but focus/h
 outlines read as softer than intended in light mode.
 
 **Requirements**
-- [ ] Audit remaining low-alpha white literals outside `:root` in `src/index.css`
-- [ ] Introduce theme-aware border/scrollbar tokens (mirrors the `--text-strong` /
+- [x] Audit remaining low-alpha white literals outside `:root` in `src/index.css`
+- [x] Introduce theme-aware border/scrollbar tokens (mirrors the `--text-strong` /
       `--raise` / `--glass-bg` approach from 5.6) or flip the alpha direction under
       `:root[data-theme="light"]`
 
 **Acceptance:** hover/focus outlines and scrollbars are visibly present (not just
-technically non-zero-alpha) in light mode, with no dark-mode regression.
+technically non-zero-alpha) in light mode, with no dark-mode regression. ✅
+
+**Implementation notes:**
+- Audited every `rgba(255,255,255,α)` literal outside `:root`. They fell into two
+  groups: (1) borders/scrollbars on components that sit on the app's normal
+  light/dark-aware surface (`--bg`/`--bg2`/`--surface`), which genuinely go
+  faint-to-invisible in light mode — these were converted; (2) borders on elements
+  that float over fixed always-dark surfaces by design — cover-art overlay chips
+  (`.cover-status`, `.cover-rating`, `.card-action-btn`, `.cover-progress-inc`),
+  and the centered glass dialogs (`.edit-modal`/`.edit-input`/`.edit-hero-cover`,
+  `.series-dropdown`, `.releases-panel`) which all keep a literal near-black
+  background in both themes — these were intentionally left alone, since their
+  white borders/text still read fine against a background that never lightens.
+- Added two new theme-aware tokens at `:root`, mirroring the `--border`/`--border2`
+  pattern from 5.6: `--border3` (stronger emphasis border for focus rings and the
+  dotted "editable" affordance — 0.20 white / 0.28 black) and
+  `--scrollbar-thumb`/`--scrollbar-thumb-hover` (0.07→0.16 / 0.13→0.28), since
+  scrollbars need more contrast boost in light mode than a plain border does.
+- Converted borders/backgrounds on: `.setting-input` (+ its `:focus` ring),
+  `.color-swatch`, `.panel-form input/select/textarea` (rest/hover/focus, used by
+  `AddEntryPanel`), `.timeline-year-body`'s divider, `.search-spinner`'s track, and
+  every `scrollbar-color`/`::-webkit-scrollbar-thumb` declaration in the file — all
+  now reference `var(--border)` / `var(--border2)` / `var(--border3)` /
+  `var(--surface)` / `var(--scrollbar-thumb*)` instead of a raw white literal.
+  Accent-tinted scrollbars (`color-mix(... var(--accent) …, rgba(255,255,255,α))`)
+  were left as-is — they already carry the category accent hue, so they don't go
+  invisible in light mode the way a pure white tint does.
+
+**Verification.** `npm test` → **142/142 pass** (unchanged — CSS-only change, no
+logic to unit test). `vite build` clean (226.34 kB JS / 70.72 kB CSS). better-sqlite3
+rebuilt back to the Electron ABI. GUI not driven headlessly — verified by reading
+each touched selector's rendering context (which surface/background it sits on) to
+confirm the token swap doesn't wash it out against a fixed-dark backdrop, and that
+untouched dark-mode values are numerically identical to before (same alpha under
+`:root`'s default, non-light-themed definitions).
 
 **Touches:** `src/index.css` only.
 
@@ -247,3 +325,6 @@ technically non-zero-alpha) in light mode, with no dark-mode regression.
 | 2026-07-28 | 6.1 Re-watch/re-read logs now included in JSON export/import (`logs` array, `entry_id` remapped via id map, backward-compatible with pre-6.1 exports); binary backup/restore confirmed to already preserve logs — 133/133 tests |
 | 2026-07-28 | 6.2 `year` is now editable on existing entries (`EditEntryPanel` gains a Year field; `updateEntry` preserve-on-omit pattern extended to `year`) — 136/136 tests |
 | 2026-07-29 | 6.3 Global cross-category search shipped (`GlobalSearchModal`, "All categories" button + `Ctrl/Cmd+Shift+K`, groups matches by category and jumps to the entry's edit panel) — 136/136 tests |
+| 2026-07-29 | 6.4 Insights per-series average rating shipped (`computeStats` gains `perSeries`, keyed by `series_id`; new "Average rating by series" card in `InsightsPage.jsx`, capped to top 10 with a show-all toggle) — 142/142 tests |
+| 2026-07-29 | 6.5 Insights per-month heat strip shipped (`getYearMonth` + `computeStats.perMonth`; new `HeatStrip` component, one row per year with accent-opacity cells) — 142/142 tests |
+| 2026-07-29 | 6.7 Light theme border/scrollbar audit: introduced `--border3`/`--scrollbar-thumb`/`--scrollbar-thumb-hover` tokens and converted remaining raw white-literal borders/scrollbars on normal-surface components (Settings inputs, color swatch, Add Entry panel fields, timeline divider, search spinner) — deliberately left literals on fixed-dark glass modals/cover-art overlays unchanged — 142/142 tests, CSS-only |

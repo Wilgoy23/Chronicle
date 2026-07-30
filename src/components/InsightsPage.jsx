@@ -25,8 +25,45 @@ function BarChart({ data, xKey, max, accent, unit }) {
   )
 }
 
+// GitHub-contributions-style heat strip: one row per year, one cell per month,
+// color intensity (accent alpha) scaled to that year's own peak month.
+function HeatStrip({ perMonth, accent }) {
+  const MONTH_LABELS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+  return (
+    <div className="insights-heat">
+      {perMonth.map(({ year, months }) => {
+        const peak = Math.max(1, ...months.map(m => m.count))
+        return (
+          <div className="insights-heat-row" key={year}>
+            <span className="insights-heat-year">{year}</span>
+            <div className="insights-heat-cells">
+              {months.map(m => (
+                <div
+                  key={m.month}
+                  className="insights-heat-cell"
+                  title={`${year}-${String(m.month).padStart(2, '0')}: ${m.count} completed`}
+                  style={{ background: m.count === 0 ? undefined : accent, opacity: m.count === 0 ? 1 : 0.18 + (m.count / peak) * 0.82 }}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+      <div className="insights-heat-row insights-heat-labels">
+        <span className="insights-heat-year" />
+        <div className="insights-heat-cells">
+          {MONTH_LABELS.map((l, i) => <span key={i} className="insights-heat-label">{l}</span>)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const SERIES_CAP = 10
+
 export default function InsightsPage({ categories, accent }) {
   const [entries, setEntries] = useState(null)
+  const [showAllSeries, setShowAllSeries] = useState(false)
 
   useEffect(() => { window.db.getEntries().then(setEntries) }, [])
 
@@ -103,6 +140,14 @@ export default function InsightsPage({ categories, accent }) {
         </div>
       )}
 
+      {/* Completions per month, per year */}
+      {stats.perMonth.length > 0 && (
+        <div className="insights-card">
+          <h3 className="insights-card-title">Completed per month</h3>
+          <HeatStrip perMonth={stats.perMonth} accent={accent} />
+        </div>
+      )}
+
       {/* Average rating by category — bars are direct-labeled, so category
           identity never depends on color alone (colors reinforce only). */}
       {stats.perCategory.length > 0 && (
@@ -122,6 +167,33 @@ export default function InsightsPage({ categories, accent }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Average rating by series — same direct-labeled hbar pattern as per-category,
+          capped to avoid an unbounded list for users tracking many series. */}
+      {stats.perSeries.length > 0 && (
+        <div className="insights-card">
+          <h3 className="insights-card-title">Average rating by series</h3>
+          <div className="insights-hbars">
+            {(showAllSeries ? stats.perSeries : stats.perSeries.slice(0, SERIES_CAP)).map(s => (
+              <div className="insights-hbar-row" key={s.id}>
+                <span className="insights-hbar-label" title={`${s.name} (${s.categoryLabel})`}>{s.name}</span>
+                <div className="insights-hbar-track" title={`${s.name}: ${s.avg.toFixed(1)} avg over ${s.count} rated`}>
+                  <div
+                    className="insights-hbar-fill"
+                    style={{ width: `${(s.avg / 10) * 100}%`, background: s.color }}
+                  />
+                </div>
+                <span className="insights-hbar-val">{s.avg.toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+          {stats.perSeries.length > SERIES_CAP && (
+            <button className="insights-show-more" onClick={() => setShowAllSeries(v => !v)}>
+              {showAllSeries ? 'Show less' : `Show all ${stats.perSeries.length} series`}
+            </button>
+          )}
         </div>
       )}
     </div>
