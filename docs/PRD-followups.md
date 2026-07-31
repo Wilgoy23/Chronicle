@@ -18,7 +18,7 @@
 | 6.3 | Global cross-category search | 1.1 | P2 | ✅ |
 | 6.4 | Insights: per-series average rating | 3.1 | P3 | ✅ |
 | 6.5 | Insights: per-month heat strip | 3.1 | P3 | ✅ |
-| 6.6 | Non-Chronicle CSV import mappers (Goodreads/MAL/Letterboxd) | 3.3 | P3 | 🟨 |
+| 6.6 | Non-Chronicle CSV import mappers (Goodreads/MAL/Letterboxd) | 3.3 | P3 | ✅ |
 | 6.7 | Light theme: low-alpha white borders/scrollbar tints | 5.6 | P3 | ✅ |
 
 ---
@@ -241,17 +241,17 @@ clean (226.34 kB JS / 70.72 kB CSS). better-sqlite3 rebuilt back to the Electron
 GUI not driven headlessly — verified by code inspection against the acceptance
 criteria.
 
-### 6.6 Non-Chronicle CSV import mappers — 🟨 In progress (Goodreads + MAL shipped) `P3`
+### 6.6 Non-Chronicle CSV import mappers — ✅ Done `P3`
 
 Deferred from 3.3. Only Chronicle's own JSON export can be imported today. Each
 external source needs its own column-mapping layer on top of the existing
 `importData` core. Shipped incrementally per the requirement below — Goodreads
-first, then MAL; Letterboxd deferred until requested.
+first, then MAL, then Letterboxd.
 
 **Requirements**
 - [x] Goodreads CSV → Books (title, author→notes?, rating, date read, shelf→status)
 - [x] MyAnimeList (MAL) export → Anime/Manga
-- [ ] Letterboxd CSV → Movies
+- [x] Letterboxd CSV → Movies
 - [x] Each mapper normalizes its source format into the shape `importData` already
       accepts, then reuses the existing merge/dedupe logic unchanged
 - [x] Ship incrementally, one source per release, prioritized by actual demand —
@@ -259,10 +259,11 @@ first, then MAL; Letterboxd deferred until requested.
 
 **Acceptance:** a real export file from each service, run through its mapper,
 produces sensible Chronicle entries with correct status/rating/date mapping.
-Goodreads slice: ✅ (verified against the documented Goodreads export column
-format; no live sample file from a user account was available, so verification is
-by code inspection + unit tests rather than a real downloaded export — flagged
-below).
+All three slices (Goodreads, MAL, Letterboxd) are ✅ by code inspection + unit
+tests against the documented export column formats for each service; none had
+a live sample file from a real user account available, so none has been run
+against an actual downloaded export — flagged per-slice below as a known risk
+for a follow-up fix if a real file's exact columns/values differ.
 
 **Implementation notes (Goodreads slice):**
 - New `electron/csv.js` export `parseCsv(text)` — a small RFC4180-ish parser
@@ -361,10 +362,59 @@ real MAL export file** — same caveat as the Goodreads slice: built from
 documented/reverse-engineered field names and status strings, not a live
 download, so a real export's exact quirks may need a follow-up fix.
 
-**Touches:** `electron/csv.js` (`parseCsv`), new `electron/importers/goodreads.js`
-and `electron/importers/mal.js`, `electron/main.js` (`data:importGoodreads`,
-`data:importMal`), `electron/preload.js`, `src/components/SettingsPage.jsx`,
-`electron/db.js` (`importData` reused as-is).
+**Implementation notes (Letterboxd slice):**
+- New `electron/importers/letterboxd.js` (`mapLetterboxd(csvText)`), reusing
+  `parseCsv` from `electron/csv.js` exactly like Goodreads. Letterboxd's actual
+  "Export Data" download is a zip containing several CSVs (`diary.csv`,
+  `ratings.csv`, `watched.csv`, `watchlist.csv`, `reviews.csv`, etc.) with
+  overlapping data — rather than hand-roll a zip reader (a meaningfully bigger
+  lift than `parseCsv`, and out of scope for a dependency-free parser), this
+  slice takes `diary.csv` on its own, the file the user extracts from the zip.
+  It was chosen over the other files because it's the richest single CSV: every
+  logged watch with its rating, watched date, and rewatch flag together in one
+  place, closest in shape to Goodreads' single-file "My Books" export. Column
+  reference (researched, not verified against a live download — same caveat as
+  Goodreads/MAL): `Date, Name, Year, Letterboxd URI, Rating, Rewatch, Tags,
+  Watched Date`.
+- Every diary row is, by definition, a logged watch, so `status` is always
+  `completed` — there's no in-progress/planned concept in a watch-log export
+  (unlike Goodreads' shelves or MAL's list statuses). `category` is always
+  `movie`.
+- `Rating` is Letterboxd's 0.5–5 scale in half-star steps; doubled to
+  Chronicle's 1–10 scale (`Math.round(stars * 2)`, though the half-star
+  increments already land on whole numbers after doubling — the round guards
+  float precision, e.g. `4.5 * 2`), with a blank rating mapped to `null`
+  (unrated) rather than `0`.
+  `Watched Date` (the actual viewing date) is preferred for `date_read`,
+  falling back to `Date` (the diary log date, which can differ from the
+  watched date when a user back-logs an older viewing) when `Watched Date` is
+  blank; `Date` also seeds `created_at`, mirroring Goodreads' `Date Added`.
+  `Year` and `Tags` are folded into `notes` (`"(2021) — Tags: sci-fi"` style)
+  since Chronicle has no dedicated release-year or tag field on entries;
+  `Rewatch` also appends a `"Rewatch"` marker to `notes` rather than being
+  dropped, since Chronicle doesn't track watch counts.
+- IPC/preload/Settings UI follow the exact `data:importGoodreads`/
+  `data:importMal` pattern: `data:importLetterboxd` → `window.data.
+  importLetterboxd()` → "Import Letterboxd diary.csv…" button, no new plumbing.
+
+**Verification.** `npm test` → **177/177 pass** (+9: `letterboxdDate` pass-
+through/blank cases; `mapLetterboxd` covers full field mapping, diary rows
+always `completed`, blank rating→null, 0.5/5-star→1/10 scale conversion,
+rewatch noted, `date_read` falling back to the diary log `Date` when `Watched
+Date` is blank, and title-less rows skipped). `vite build` clean (227.07 kB JS
+/ 70.72 kB CSS). better-sqlite3 rebuilt back to the Electron ABI. **Not
+verified against a real Letterboxd export file** — same caveat as the
+Goodreads/MAL slices: built from the documented/well-known `diary.csv` column
+names, not a live download, so a real export's exact quirks (or a differently
+named/shaped file if Letterboxd's format has since changed) may need a
+follow-up fix.
+
+**Touches:** `electron/csv.js` (`parseCsv`, shared by all three), new
+`electron/importers/goodreads.js`, `electron/importers/mal.js`, and
+`electron/importers/letterboxd.js`, `electron/main.js` (`data:importGoodreads`,
+`data:importMal`, `data:importLetterboxd`), `electron/preload.js`,
+`src/components/SettingsPage.jsx`, `electron/db.js` (`importData` reused as-is
+throughout, unchanged).
 
 ### 6.7 Light theme: low-alpha white borders/scrollbar tints — ✅ Done `P3`
 
@@ -434,3 +484,4 @@ untouched dark-mode values are numerically identical to before (same alpha under
 | 2026-07-29 | 6.7 Light theme border/scrollbar audit: introduced `--border3`/`--scrollbar-thumb`/`--scrollbar-thumb-hover` tokens and converted remaining raw white-literal borders/scrollbars on normal-surface components (Settings inputs, color swatch, Add Entry panel fields, timeline divider, search spinner) — deliberately left literals on fixed-dark glass modals/cover-art overlays unchanged — 142/142 tests, CSS-only |
 | 2026-07-30 | 6.6 Goodreads CSV import shipped (first of three planned mappers): `parseCsv` added to `electron/csv.js`, new `electron/importers/goodreads.js` maps title/author/rating/date/shelf into the existing `importData` shape, "Import Goodreads CSV…" button in Settings — not yet verified against a real downloaded export — 156/156 tests |
 | 2026-07-30 | 6.6 MyAnimeList XML import shipped (second mapper): new `electron/importers/mal.js` with a hand-rolled block/field extractor (no XML dependency added), 5-status→3-status mapping (On-Hold→in_progress, Dropped→completed), transparent gzip support for MAL's native `.xml.gz` download, "Import MyAnimeList…" button in Settings — not yet verified against a real downloaded export — 168/168 tests |
+| 2026-07-31 | 6.6 Letterboxd diary.csv import shipped (third and final mapper, item complete): new `electron/importers/letterboxd.js` maps `diary.csv` (the richest single file inside Letterboxd's export zip) into Movies — always `completed`, 0.5–5 star rating doubled to 1–10, watched-date-with-log-date-fallback, rewatch/year/tags folded into notes — "Import Letterboxd diary.csv…" button in Settings — not yet verified against a real downloaded export — 177/177 tests |

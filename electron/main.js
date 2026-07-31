@@ -11,6 +11,7 @@ const { runReleaseScan }   = require('./releaseChecker')
 const { toCsv }            = require('./csv')
 const { mapGoodreads }     = require('./importers/goodreads')
 const { mapMal }           = require('./importers/mal')
+const { mapLetterboxd }    = require('./importers/letterboxd')
 
 let mainWindow = null
 
@@ -184,6 +185,21 @@ app.whenReady().then(() => {
       const isGzip = raw[0] === 0x1f && raw[1] === 0x8b
       const xml = (isGzip ? zlib.gunzipSync(raw) : raw).toString('utf8')
       return importData(mapMal(xml))
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('data:importLetterboxd', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Letterboxd diary.csv',
+      filters: [{ name: 'CSV', extensions: ['csv'] }],
+      properties: ['openFile'],
+    })
+    if (canceled || !filePaths?.length) return { ok: false, canceled: true }
+    try {
+      const data = mapLetterboxd(fs.readFileSync(filePaths[0], 'utf8'))
+      return importData(data)
     } catch (err) {
       return { ok: false, error: String(err) }
     }
