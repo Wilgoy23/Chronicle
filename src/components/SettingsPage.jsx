@@ -6,6 +6,7 @@ import ConfirmDialog from './ConfirmDialog'
 const SECTIONS = [
   { id: 'appearance',    label: 'Appearance',    icon: '🎨' },
   { id: 'api',           label: 'API Keys',      icon: '🔑' },
+  { id: 'ai',            label: 'AI',            icon: '✨' },
   { id: 'categories',    label: 'Categories',    icon: '📂' },
   { id: 'notifications', label: 'Notifications', icon: '🔔' },
   { id: 'data',          label: 'Data',          icon: '🗄' },
@@ -60,6 +61,7 @@ export default function SettingsPage() {
 
         {section === 'appearance'    && <AppearanceSection />}
         {section === 'api'           && <ApiSection           settings={settings} onSave={save} />}
+        {section === 'ai'            && <AiSection            settings={settings} onSave={save} />}
         {section === 'categories'    && <CategoriesSection    settings={settings} onSave={save} />}
         {section === 'notifications' && <NotificationsSection settings={settings} onSave={save} />}
         {section === 'data'          && <DataSection />}
@@ -167,6 +169,152 @@ function ApiSection({ settings, onSave }) {
         settingKey="rawgKey"
         onSave={onSave}
       />
+    </section>
+  )
+}
+
+// ── AI ─────────────────────────────────────────────
+const BACKEND_LABELS = {
+  transformers:  { text: 'Local embedding model ready', tone: 'ok' },
+  fallback:      { text: 'Lightweight offline fallback (model unavailable)', tone: 'warn' },
+  loading:       { text: 'Loading local model…', tone: 'warn' },
+  uninitialized: { text: 'Not initialized yet — runs on first use', tone: 'warn' },
+}
+
+function AiSection({ settings, onSave }) {
+  const ai = settings.ai ?? {}
+  const [status, setStatus]     = useState(null)
+  const [progress, setProgress] = useState(null)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [ollamaUrl, setOllamaUrl]     = useState(ai.ollamaUrl ?? 'http://127.0.0.1:11434')
+  const [ollamaModel, setOllamaModel] = useState(ai.ollamaModel ?? 'llama3.2')
+  const [testResult, setTestResult]   = useState(null)
+
+  const refreshStatus = () => window.ai.status().then(setStatus).catch(() => {})
+
+  useEffect(() => {
+    refreshStatus()
+    const off = window.ai.onIndexProgress(p => {
+      setProgress(p)
+      if (p.done) refreshStatus()
+    })
+    return off
+  }, [])
+
+  async function rebuild() {
+    setRebuilding(true)
+    try { await window.ai.rebuildIndex() } catch { /* progress events surface state */ }
+    setRebuilding(false)
+    refreshStatus()
+  }
+
+  function patchAi(patch) {
+    onSave({ ai: { ...ai, ...patch } })
+  }
+
+  async function testOllama() {
+    setTestResult(null)
+    // Save first so the test uses what's on screen.
+    await onSave({ ai: { ...ai, ollamaUrl: ollamaUrl.trim(), ollamaModel: ollamaModel.trim() } })
+    const res = await window.ai.ollamaTest()
+    setTestResult(res.ok
+      ? { ok: true, text: `Connected — models: ${res.models.slice(0, 5).join(', ') || 'none pulled yet'}` }
+      : { ok: false, text: `Not reachable: ${res.error}` })
+  }
+
+  const backend = BACKEND_LABELS[status?.backend] ?? BACKEND_LABELS.uninitialized
+  const indexed = status?.index?.stored ?? 0
+  const total   = status?.index?.total ?? null
+
+  return (
+    <section className="settings-section">
+      <h2>AI</h2>
+      <p className="settings-desc">
+        Chronicle's AI runs entirely on your device. A small embedding model powers
+        semantic search, natural-language filtering, recommendations and series
+        detection — no cloud APIs. The model (~25 MB) is downloaded once on first
+        use, then everything works offline.
+      </p>
+
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>Local model</label>
+          <span className="setting-hint">
+            {backend.text}{status?.model ? ` · ${status.model}` : ''}
+            {status?.error ? ` — ${status.error}` : ''}
+          </span>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>Search index</label>
+          <span className="setting-hint">
+            {progress && !progress.done
+              ? `Indexing ${progress.indexed} / ${progress.total}…`
+              : `${indexed} ${indexed === 1 ? 'entry' : 'entries'} indexed${total != null ? ` of ${total}` : ''}`}
+          </span>
+        </div>
+        <button className="save-field-btn" onClick={rebuild} disabled={rebuilding}>
+          {rebuilding ? 'Rebuilding…' : 'Rebuild index'}
+        </button>
+      </div>
+
+      <h3 style={{ marginTop: '1.5rem' }}>Ollama (optional)</h3>
+      <p className="settings-desc">
+        Point Chronicle at a locally running <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a> server
+        to add an LLM on top: smarter natural-language queries and brand-new title
+        suggestions. Still fully local — nothing leaves your machine.
+      </p>
+
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>Use Ollama</label>
+          <span className="setting-hint">Falls back to the offline heuristics whenever the server is down.</span>
+        </div>
+        <label className="cat-toggle">
+          <input
+            type="checkbox"
+            checked={ai.ollamaEnabled === true}
+            onChange={() => patchAi({ ollamaEnabled: ai.ollamaEnabled !== true })}
+          />
+          <span className="cat-label"><span>{ai.ollamaEnabled ? 'On' : 'Off'}</span></span>
+        </label>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>Server URL</label>
+          <span className="setting-hint">Default: http://127.0.0.1:11434</span>
+        </div>
+        <div className="token-input-wrap">
+          <input
+            className="setting-input"
+            value={ollamaUrl}
+            onChange={e => setOllamaUrl(e.target.value)}
+            spellCheck={false}
+          />
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-info">
+          <label>Model</label>
+          <span className="setting-hint">Any model you've pulled, e.g. llama3.2, mistral, qwen2.5</span>
+        </div>
+        <div className="token-input-wrap">
+          <input
+            className="setting-input"
+            value={ollamaModel}
+            onChange={e => setOllamaModel(e.target.value)}
+            spellCheck={false}
+          />
+          <button className="save-field-btn" onClick={testOllama}>Save &amp; test</button>
+        </div>
+      </div>
+      {testResult && (
+        <span className={`setting-status ${testResult.ok ? 'ok' : 'err'}`}>{testResult.text}</span>
+      )}
     </section>
   )
 }

@@ -6,6 +6,7 @@ import EntryCard from './components/EntryCard'
 import ListView from './components/ListView'
 import SearchModal from './components/SearchModal'
 import GlobalSearchModal from './components/GlobalSearchModal'
+import AiPanel from './components/AiPanel'
 import SeriesGroup from './components/SeriesGroup'
 import TimelineView from './components/TimelineView'
 import SettingsPage from './components/SettingsPage'
@@ -171,6 +172,7 @@ export default function App() {
   const [seriesList, setSeriesList]   = useState([])
   const [searchOpen, setSearchOpen]   = useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
   const [manualOpen, setManualOpen]   = useState(false)
   const [editingEntry, setEditingEntry] = useState(null)
   const [view, setViewState]          = useState(loadView)
@@ -280,7 +282,7 @@ export default function App() {
   // Global keyboard shortcuts: Esc closes the topmost overlay; Ctrl/Cmd+N adds;
   // Ctrl/Cmd+K|F focuses in-category search; Ctrl/Cmd+Shift+K opens cross-category search.
   useEffect(() => {
-    const anyOverlayOpen = searchOpen || globalSearchOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete
+    const anyOverlayOpen = searchOpen || globalSearchOpen || aiOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete
     function onKey(e) {
       if (e.key === 'Escape') {
         if (seriesToDelete)   { setSeriesToDelete(null); return }
@@ -288,6 +290,7 @@ export default function App() {
         if (manualOpen)       { setManualOpen(false); setPendingSeriesId(null); return }
         if (searchOpen)       { setSearchOpen(false); setPendingSeriesId(null); return }
         if (globalSearchOpen) { setGlobalSearchOpen(false); return }
+        if (aiOpen)           { setAiOpen(false); return }
         if (releasesOpen)     { setReleasesOpen(false); return }
         return
       }
@@ -303,7 +306,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [searchOpen, globalSearchOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, page])
+  }, [searchOpen, globalSearchOpen, aiOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, page])
 
   // Jump from a global (cross-category) search hit to its own category tab + edit panel.
   function handleGlobalSelect(entry) {
@@ -312,7 +315,14 @@ export default function App() {
     setTagFilter(null)
     setEditingEntry(entry)
     setGlobalSearchOpen(false)
+    setAiOpen(false)
     setSidebarOpen(false)
+  }
+
+  // Series suggestions applied from the AI panel change entries + series lists.
+  function handleAiLibraryChanged() {
+    refreshEntries()
+    refreshSeriesList()
   }
 
   function refreshSeriesList() {
@@ -839,6 +849,14 @@ export default function App() {
               {ICONS.search} All categories
             </button>
 
+            <button
+              className="global-search-btn ai-open-btn"
+              onClick={() => setAiOpen(true)}
+              title="Ask your library — semantic search, recommendations, series detection"
+            >
+              ✨ Ask AI
+            </button>
+
             {tagFilter && (
               <button
                 className="tag-filter-active"
@@ -972,6 +990,16 @@ export default function App() {
             categories={visibleCats}
             onSelect={handleGlobalSelect}
             onClose={() => setGlobalSearchOpen(false)}
+          />
+
+          <AiPanel
+            open={aiOpen}
+            categories={visibleCats}
+            activeCat={activeCat}
+            color={activeCat?.color}
+            onClose={() => setAiOpen(false)}
+            onSelectEntry={handleGlobalSelect}
+            onLibraryChanged={handleAiLibraryChanged}
           />
 
           <AddEntryPanel
