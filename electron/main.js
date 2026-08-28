@@ -7,6 +7,7 @@ const {
   exportData, importData, getDbPath, closeDb, validateBackupFile, backupTo,
 } = require('./db')
 const { registerHandlers } = require('./ipc')
+const { registerAiHandlers, markLibraryDirty } = require('./ai/aiService')
 const { runReleaseScan }   = require('./releaseChecker')
 const { toCsv }            = require('./csv')
 const { mapGoodreads }     = require('./importers/goodreads')
@@ -63,6 +64,8 @@ function createWindow() {
   // Scan for new releases shortly after the UI is ready (throttled to once/day).
   win.webContents.once('did-finish-load', () => {
     performScan({ force: false }).catch(err => console.error('[releases] scan failed:', err))
+    // Build/refresh the local AI embedding index in the background.
+    markLibraryDirty()
   })
 }
 
@@ -150,7 +153,9 @@ app.whenReady().then(() => {
     if (canceled || !filePaths?.length) return { ok: false, canceled: true }
     try {
       const data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'))
-      return importData(data)
+      const result = importData(data)
+      if (result.ok && result.imported) markLibraryDirty()
+      return result
     } catch (err) {
       return { ok: false, error: err instanceof SyntaxError ? 'That file is not valid JSON.' : String(err) }
     }
@@ -165,7 +170,9 @@ app.whenReady().then(() => {
     if (canceled || !filePaths?.length) return { ok: false, canceled: true }
     try {
       const data = mapGoodreads(fs.readFileSync(filePaths[0], 'utf8'))
-      return importData(data)
+      const result = importData(data)
+      if (result.ok && result.imported) markLibraryDirty()
+      return result
     } catch (err) {
       return { ok: false, error: String(err) }
     }
@@ -184,7 +191,9 @@ app.whenReady().then(() => {
       const raw = fs.readFileSync(filePaths[0])
       const isGzip = raw[0] === 0x1f && raw[1] === 0x8b
       const xml = (isGzip ? zlib.gunzipSync(raw) : raw).toString('utf8')
-      return importData(mapMal(xml))
+      const result = importData(mapMal(xml))
+      if (result.ok && result.imported) markLibraryDirty()
+      return result
     } catch (err) {
       return { ok: false, error: String(err) }
     }
@@ -199,7 +208,9 @@ app.whenReady().then(() => {
     if (canceled || !filePaths?.length) return { ok: false, canceled: true }
     try {
       const data = mapLetterboxd(fs.readFileSync(filePaths[0], 'utf8'))
-      return importData(data)
+      const result = importData(data)
+      if (result.ok && result.imported) markLibraryDirty()
+      return result
     } catch (err) {
       return { ok: false, error: String(err) }
     }
@@ -253,6 +264,7 @@ app.whenReady().then(() => {
       initDb(dbPath)                    // reopen + run migrations on the restored file
       try { fs.unlinkSync(safety) } catch {}
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload()
+      markLibraryDirty()                // restored library needs a fresh AI index diff
       return { ok: true }
     } catch (err) {
       // Roll back to the safety copy if anything failed mid-restore.
@@ -263,6 +275,13 @@ app.whenReady().then(() => {
   })
 
   registerHandlers(readSettings)
+  registerAiHandlers({
+    readSettings,
+    modelCacheDir: path.join(app.getPath('userData'), 'ai-models'),
+    send: (channel, payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
+    },
+  })
   createWindow()
 
   app.on('activate', () => {

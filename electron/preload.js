@@ -40,6 +40,23 @@ contextBridge.exposeInMainWorld('api', {
   searchGames:  (query) => ipcRenderer.invoke('api:searchGames',  query),
 })
 
+contextBridge.exposeInMainWorld('ai', {
+  status:       ()             => ipcRenderer.invoke('ai:status'),
+  rebuildIndex: ()             => ipcRenderer.invoke('ai:rebuildIndex'),
+  search:       (query, opts)  => ipcRenderer.invoke('ai:search', query, opts),
+  ask:          (query, opts)  => ipcRenderer.invoke('ai:ask', query, opts),
+  recommend:    (opts)         => ipcRenderer.invoke('ai:recommend', opts),
+  suggestNew:   (opts)         => ipcRenderer.invoke('ai:suggestNew', opts),
+  detectSeries: (opts)         => ipcRenderer.invoke('ai:detectSeries', opts),
+  applySeries:  (payload)      => ipcRenderer.invoke('ai:applySeries', payload),
+  ollamaTest:   ()             => ipcRenderer.invoke('ai:ollamaTest'),
+  onIndexProgress: (cb) => {
+    const handler = (_e, progress) => cb(progress)
+    ipcRenderer.on('ai:indexProgress', handler)
+    return () => ipcRenderer.removeListener('ai:indexProgress', handler)
+  },
+})
+
 contextBridge.exposeInMainWorld('releases', {
   get:       ()            => ipcRenderer.invoke('releases:get'),
   setStatus: (id, status)  => ipcRenderer.invoke('releases:setStatus', id, status),
