@@ -83,6 +83,21 @@ function initDb(dbPath) {
     )
   `)
 
+  // Local AI: one embedding vector per entry. `model` records which backend
+  // produced the vector (real model vs lexical fallback) so the index is
+  // rebuilt rather than mixed when the backend changes; `text_hash` lets
+  // indexing skip entries whose embed-text hasn't changed.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS embeddings (
+      entry_id   INTEGER PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+      model      TEXT NOT NULL,
+      dim        INTEGER NOT NULL,
+      vector     BLOB NOT NULL,
+      text_hash  TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `)
+
   // One-time migration: promote entries.series text → series table rows + series_id
   const needsMigration = db.prepare(`
     SELECT 1 FROM entries WHERE series IS NOT NULL AND series != '' AND series_id IS NULL LIMIT 1
@@ -214,6 +229,7 @@ function deleteEntry(id) {
   // Cascade logs explicitly — the ON DELETE CASCADE FK only fires when
   // PRAGMA foreign_keys is on, which we don't rely on elsewhere.
   db.prepare('DELETE FROM logs WHERE entry_id = ?').run(id)
+  db.prepare('DELETE FROM embeddings WHERE entry_id = ?').run(id)
   db.prepare('DELETE FROM entries WHERE id = ?').run(id)
   return { success: true }
 }
@@ -334,6 +350,46 @@ function setReleaseStatus(id, status) {
 
 function unseenReleaseCount() {
   return db.prepare(`SELECT COUNT(*) AS n FROM releases WHERE status = 'new'`).get().n
+}
+
+// ── Local AI embedding index ─────────────────────────────────────
+
+// Everything the indexer needs to diff: which entries are indexed, under
+// which model, and against which text hash. Vectors stay as raw Buffers.
+function getEmbeddingIndex() {
+  return db.prepare('SELECT entry_id, model, dim, vector, text_hash FROM embeddings').all()
+}
+
+function upsertEmbedding({ entry_id, model, dim, vector, text_hash }) {
+  db.prepare(`
+    INSERT OR REPLACE INTO embeddings (entry_id, model, dim, vector, text_hash, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+  `).run(entry_id, model, dim, vector, text_hash)
+}
+
+// Wipe vectors from any other backend — cheaper than mixing incomparable spaces.
+function deleteEmbeddingsForOtherModels(model) {
+  db.prepare('DELETE FROM embeddings WHERE model != ?').run(model)
+}
+
+// Remove vectors whose entry has been deleted outside deleteEntry (e.g. restore).
+function pruneOrphanEmbeddings() {
+  db.prepare('DELETE FROM embeddings WHERE entry_id NOT IN (SELECT id FROM entries)').run()
+}
+
+function clearEmbeddings() {
+  db.prepare('DELETE FROM embeddings').run()
+}
+
+function countEmbeddings() {
+  return db.prepare('SELECT COUNT(*) AS n FROM embeddings').get().n
+}
+
+// Minimal single-column update used by "apply series suggestion" — updateEntry
+// requires every editable field, which the AI panel doesn't have loaded.
+function setEntrySeries(id, series_id) {
+  db.prepare('UPDATE entries SET series_id = ? WHERE id = ?').run(series_id ?? null, id)
+  return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(id)
 }
 
 // ── Export / backup support ──────────────────────────────────────
@@ -472,7 +528,9 @@ module.exports = {
   getEntries, addEntry, findDuplicate, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries,
-  getEntriesWithSource, getEntriesMissingSource, setEntrySource,
+  getEntriesWithSource, getEntriesMissingSource, setEntrySource, setEntrySeries,
+  getEmbeddingIndex, upsertEmbedding, deleteEmbeddingsForOtherModels,
+  pruneOrphanEmbeddings, clearEmbeddings, countEmbeddings,
   getReleases, addRelease, getKnownReleaseSourceIds, setReleaseStatus, unseenReleaseCount,
   getDbPath, closeDb, getAllSeries, exportData, importData, validateBackupFile, backupTo,
 }
