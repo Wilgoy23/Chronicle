@@ -26,6 +26,10 @@
   --border3:            rgba(255,255,255,0.20);
   --scrollbar-thumb:       rgba(255,255,255,0.07);
   --scrollbar-thumb-hover: rgba(255,255,255,0.13);
+  /* Overlay surface for modals/dialogs. Theme-aware: it was previously a
+     hardcoded dark value, which left every modal a near-black slab in light
+     mode while the text tokens flipped to dark — i.e. invisible text. */
+  --modal-bg:  rgba(9,9,18,0.97);
   color-scheme: dark;
 }
 
@@ -49,6 +53,7 @@
   --border3:            rgba(0,0,0,0.28);
   --scrollbar-thumb:       rgba(0,0,0,0.16);
   --scrollbar-thumb-hover: rgba(0,0,0,0.28);
+  --modal-bg:  rgba(255,255,255,0.98);
   color-scheme: light;
 }
 
@@ -1791,7 +1796,7 @@ body {
 }
 
 .search-modal {
-  background: rgba(9,9,18,0.97);
+  background: var(--modal-bg);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
   border: 1px solid var(--border);
@@ -1870,11 +1875,11 @@ body {
   padding: 0.6rem 0.75rem;
   transition: background 0.1s;
 }
-.search-modal-result:hover { background: rgba(255,255,255,0.04); }
+.search-modal-result:hover { background: var(--surface2); }
 .search-modal-result.added { opacity: 0.35; }
 
 .search-modal-cover { border-radius: 6px; flex-shrink: 0; height: 64px; object-fit: cover; width: 44px; }
-.search-modal-cover--empty { background: rgba(255,255,255,0.035); }
+.search-modal-cover--empty { background: var(--surface); }
 
 .search-modal-info { display: flex; flex: 1; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .search-modal-title { color: var(--text-strong); font-size: 0.875rem; font-weight: 500; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3681,12 +3686,28 @@ body {
 /* ═══════════════════════════════════════════════════════════
    AI PANEL  (Ask / For You / Series)
    ══════════════════════════════════════════════════════════ */
+/* Height follows content up to a ceiling — a fixed height left the empty and
+   single-result states as a mostly-blank slab. */
 .ai-panel {
   display: flex;
   flex-direction: column;
-  height: min(640px, 88vh);
+  height: auto;
+  max-height: min(660px, 88vh);
   max-width: 660px;
+  min-height: 0;
   width: min(660px, 94vw);
+}
+
+/* Visually hidden but available to screen readers. */
+.sr-only {
+  border: 0;
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .ai-panel-header {
@@ -3723,7 +3744,7 @@ body {
 
 .ai-tab {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 0.75rem;
   min-height: 0;
@@ -3810,7 +3831,7 @@ body {
   padding: 0.4rem 0.6rem;
 }
 
-.ai-fresh { border-top: 1px solid var(--border); flex-shrink: 0; margin-top: auto; padding-top: 0.85rem; }
+.ai-fresh { border-top: 1px solid var(--border); flex-shrink: 0; margin-top: 0.5rem; padding-top: 0.85rem; }
 .ai-fresh-head { align-items: baseline; display: flex; gap: 0.6rem; margin-bottom: 0.5rem; }
 .ai-fresh-head h3 { color: var(--text-strong); font-size: 0.85rem; margin: 0; }
 
@@ -3849,4 +3870,95 @@ body {
 @media (max-width: 640px) {
   .ai-panel { height: 92vh; width: 96vw; }
   .ai-ask-row { flex-wrap: wrap; }
+}
+
+/* ── AI panel: focus, examples, status (P0/P1) ───────────────── */
+
+/* Keyboard focus must be visible on every interactive element in the panel. */
+.ai-panel :is(button, input, select, [tabindex]):focus-visible,
+.search-modal :is(button, input, select):focus-visible {
+  outline: 2px solid var(--accent, #6366f1);
+  outline-offset: 2px;
+}
+
+/* Clickable example prompts — replaces examples buried in placeholder text. */
+.ai-examples { display: flex; flex-direction: column; gap: 0.5rem; }
+.ai-examples-label {
+  color: var(--text-mute);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ai-example-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.ai-example {
+  background: var(--surface);
+  border: 1px dashed var(--border2);
+  border-radius: 14px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.76rem;
+  padding: 0.3rem 0.7rem;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.ai-example:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-style: solid;
+  color: var(--text);
+}
+
+/* Result count doubles as the aria-live announcement target. */
+.ai-result-count {
+  color: var(--text-mute);
+  flex-shrink: 0;
+  font-size: 0.74rem;
+}
+
+/* Index-building notice: results may be incomplete until this clears. */
+.ai-index-note {
+  align-items: center;
+  background: color-mix(in srgb, #facc15 10%, transparent);
+  border: 1px solid color-mix(in srgb, #facc15 25%, transparent);
+  border-radius: 8px;
+  color: var(--text-dim);
+  display: flex;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+}
+
+.ai-index-dot {
+  animation: ai-pulse 1.4s ease-in-out infinite;
+  background: #facc15;
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 7px;
+  width: 7px;
+}
+
+@keyframes ai-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-index-dot { animation: none; }
+  .ai-example, .ai-tab-btn, .ai-primary-btn { transition: none; }
+}
+
+/* Result rows are buttons so they're keyboard-operable; strip the native
+   chrome and let .search-modal-result supply the layout. */
+.ai-row-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  width: 100%;
 }
