@@ -65,6 +65,14 @@ async function loadPipeline() {
 
 async function getPipeline() {
   if (backend === 'fallback') return null
+  // E2E runs against a throwaway userData dir, so loading the real model would
+  // mean a ~25 MB download per run and network-dependent timing. The fallback
+  // vectorizer is deterministic and instant, and exercises the same code paths.
+  if (process.env.CHRONICLE_TEST === '1') {
+    backend = 'fallback'
+    backendError = 'forced by CHRONICLE_TEST'
+    return null
+  }
   if (!pipePromise) {
     backend = 'loading'
     pipePromise = loadPipeline().then(
