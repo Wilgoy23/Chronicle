@@ -43,7 +43,7 @@ async function doApiSearch(category, query) {
 
 export default function SearchModal({
   open, category, color, seriesList = [], existingEntries = [],
-  defaultSeriesId = null, onAdd, onAddManually, onClose,
+  defaultSeriesId = null, defaultQuery = '', onAdd, onAddManually, onClose,
 }) {
   const [query, setQuery]         = useState('')
   const [results, setResults]     = useState([])
@@ -66,7 +66,9 @@ export default function SearchModal({
 
   useEffect(() => {
     if (open) {
-      setQuery('')
+      // Normally blank; seeded when something else (an AI "fresh pick") already
+      // knows the title being looked for, so the search runs on its own.
+      setQuery(defaultQuery)
       setResults([])
       setError(null)
       setNeedsKey(false)

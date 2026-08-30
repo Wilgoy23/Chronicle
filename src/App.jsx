@@ -183,6 +183,7 @@ export default function App() {
   const searchRef                     = useRef(null)
   const [sort, setSort]               = useState('recent')
   const [pendingSeriesId, setPendingSeriesId] = useState(null)
+  const [prefillQuery, setPrefillQuery]       = useState('') // seeds SearchModal from an AI suggestion
   const [newSeriesName, setNewSeriesName]     = useState('')
   const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
   const [sidebarOpen, setSidebarOpen]         = useState(false)
@@ -317,6 +318,41 @@ export default function App() {
     setGlobalSearchOpen(false)
     setAiOpen(false)
     setSidebarOpen(false)
+  }
+
+  // AI result → editor, with the panel left open underneath. EditEntryPanel
+  // renders after AiPanel at the same z-index, so it layers on top and closing
+  // it drops the user back into their results instead of an empty library view.
+  function handleAiSelect(entry) {
+    setCategory(entry.category)
+    setSeriesFilter(null)
+    setTagFilter(null)
+    setEditingEntry(entry)
+    setSidebarOpen(false)
+  }
+
+  // The explicit "leave and show me this" action: close the panel and narrow
+  // the grid to the entry so it's visible in context.
+  function handleAiReveal(entry) {
+    setCategory(entry.category)
+    setSeriesFilter(null)
+    setTagFilter(null)
+    setStatusFilter('all')
+    setSearch(entry.title)
+    setAiOpen(false)
+    setSidebarOpen(false)
+  }
+
+  // A "fresh pick" is a title the library doesn't have yet, so it hands off to
+  // the catalogue search prefilled — or to the manual panel for categories with
+  // no search source. Either way the AI panel closes: both render beneath it.
+  function handleAiAddTitle(title, catId) {
+    const target = categories.find(c => c.id === catId) ?? activeCat
+    setCategory(target.id)
+    setPendingSeriesId(null)
+    setAiOpen(false)
+    if (categoryHasSearch(target)) { setPrefillQuery(title); setSearchOpen(true) }
+    else setManualOpen(true)
   }
 
   // Series suggestions applied from the AI panel change entries + series lists.
@@ -980,9 +1016,10 @@ export default function App() {
             seriesList={seriesList}
             existingEntries={entries}
             defaultSeriesId={pendingSeriesId}
+            defaultQuery={prefillQuery}
             onAdd={handleSearchAdd}
             onAddManually={() => { setSearchOpen(false); setManualOpen(true) }}
-            onClose={() => { setSearchOpen(false); setPendingSeriesId(null) }}
+            onClose={() => { setSearchOpen(false); setPendingSeriesId(null); setPrefillQuery('') }}
           />
 
           <GlobalSearchModal
@@ -998,7 +1035,9 @@ export default function App() {
             activeCat={activeCat}
             color={activeCat?.color}
             onClose={() => setAiOpen(false)}
-            onSelectEntry={handleGlobalSelect}
+            onSelectEntry={handleAiSelect}
+            onRevealEntry={handleAiReveal}
+            onAddTitle={handleAiAddTitle}
             onLibraryChanged={handleAiLibraryChanged}
           />
 

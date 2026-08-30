@@ -97,3 +97,25 @@ describe('detectSeries — existing series', () => {
     expect(out[0].entryIds).toHaveLength(2)
   })
 })
+
+describe('detectSeries — ordering', () => {
+  it('lists members in installment order, not string order', () => {
+    const entries = [
+      entry('Berserk, Vol. 10', 'manga'),
+      entry('Berserk, Vol. 2', 'manga'),
+      entry('Berserk, Vol. 1', 'manga'),
+    ]
+    const out = detectSeries({ entries })
+    expect(out[0].titles).toEqual(['Berserk, Vol. 1', 'Berserk, Vol. 2', 'Berserk, Vol. 10'])
+  })
+
+  it('keeps entryIds aligned with the sorted titles', () => {
+    const entries = [
+      entry('Saga, Vol. 3', 'manga'),
+      entry('Saga, Vol. 1', 'manga'),
+    ]
+    const out = detectSeries({ entries })
+    const byId = new Map(entries.map(e => [e.id, e.title]))
+    expect(out[0].entryIds.map(id => byId.get(id))).toEqual(out[0].titles)
+  })
+})

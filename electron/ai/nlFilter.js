@@ -166,11 +166,17 @@ function parseQuery(query, { categories = [], genres = [], now = new Date() } = 
 // Bounds sitting at the edge of the 1–10 scale are treated as absent — they
 // exclude nothing by value, but a non-null bound also drops *unrated* entries
 // (see applyFilter), so keeping them would silently hide part of the library.
-function sanitizeFilter(raw, { categories = [], genres = [] } = {}) {
+// That guard is aimed at lazy LLM output; pass dropFullRangeBounds: false when
+// re-sanitizing a filter this app produced, where "rated 1" is a real request.
+function sanitizeFilter(raw, { categories = [], genres = [], dropFullRangeBounds = true } = {}) {
   if (!raw || typeof raw !== 'object') return null
   const catIds = new Set(categories.map(c => c.id))
   const genreSet = new Map(genres.map(g => [String(g).toLowerCase(), g]))
+  // Absent means absent: Number(null) and Number('') are both 0, which is
+  // finite, so without this guard a null yearMin clamped to 1000 and silently
+  // excluded every entry with no release year.
   const int = (v, lo, hi) => {
+    if (v == null || v === '') return null
     const n = Number(v)
     return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : null
   }
@@ -179,8 +185,8 @@ function sanitizeFilter(raw, { categories = [], genres = [] } = {}) {
   return {
     category:  catIds.has(raw.category) ? raw.category : null,
     status:    ['completed', 'in_progress', 'planned'].includes(raw.status) ? raw.status : null,
-    ratingMin: ratingMin === 1  ? null : ratingMin,
-    ratingMax: ratingMax === 10 ? null : ratingMax,
+    ratingMin: dropFullRangeBounds && ratingMin === 1  ? null : ratingMin,
+    ratingMax: dropFullRangeBounds && ratingMax === 10 ? null : ratingMax,
     unrated:   raw.unrated === true,
     yearMin:     int(raw.yearMin, 1000, 3000),
     yearMax:     int(raw.yearMax, 1000, 3000),
@@ -221,29 +227,55 @@ function applyFilter(entries, filter) {
   })
 }
 
-// Human-readable chips for the UI, e.g. ["anime", "rating ≥ 8", "watched in 2023"].
+// Chips for the UI: [{ key, label }], e.g. { key: 'ratingMin', label: 'rating ≥ 8' }.
+// The key is what removeFilterKey() understands, so a chip can be dismissed and
+// the query re-run without the user having to rephrase it.
 function describeFilter(filter, categories = []) {
   const chips = []
+  const push = (key, label) => chips.push({ key, label })
+
   if (filter.category) {
     const cat = categories.find(c => c.id === filter.category)
-    chips.push(cat?.label ?? filter.category)
+    push('category', cat?.label ?? filter.category)
   }
-  if (filter.status) chips.push({ completed: 'Completed', in_progress: 'In Progress', planned: 'Planned' }[filter.status] ?? filter.status)
-  if (filter.unrated) chips.push('unrated')
-  else if (filter.ratingMin != null && filter.ratingMin === filter.ratingMax) chips.push(`rated ${filter.ratingMin}`)
+  if (filter.status) {
+    push('status', { completed: 'Completed', in_progress: 'In Progress', planned: 'Planned' }[filter.status] ?? filter.status)
+  }
+  if (filter.unrated) push('unrated', 'unrated')
+  else if (filter.ratingMin != null && filter.ratingMin === filter.ratingMax) push('rating', `rated ${filter.ratingMin}`)
   else {
-    if (filter.ratingMin != null) chips.push(`rating ≥ ${filter.ratingMin}`)
-    if (filter.ratingMax != null) chips.push(`rating ≤ ${filter.ratingMax}`)
+    if (filter.ratingMin != null) push('ratingMin', `rating ≥ ${filter.ratingMin}`)
+    if (filter.ratingMax != null) push('ratingMax', `rating ≤ ${filter.ratingMax}`)
   }
   if (filter.yearMin != null) {
-    chips.push(filter.yearMin === filter.yearMax ? `released ${filter.yearMin}` : `released ${filter.yearMin}–${filter.yearMax ?? '…'}`)
+    push('year', filter.yearMin === filter.yearMax ? `released ${filter.yearMin}` : `released ${filter.yearMin}–${filter.yearMax ?? '…'}`)
   }
   if (filter.dateYearMin != null) {
-    chips.push(filter.dateYearMin === filter.dateYearMax ? `logged ${filter.dateYearMin}` : `logged ${filter.dateYearMin}–${filter.dateYearMax ?? '…'}`)
+    push('dateYear', filter.dateYearMin === filter.dateYearMax ? `logged ${filter.dateYearMin}` : `logged ${filter.dateYearMin}–${filter.dateYearMax ?? '…'}`)
   }
-  for (const g of filter.genres) chips.push(`#${g}`)
-  if (filter.text) chips.push(`“${filter.text}”`)
+  for (const g of filter.genres) push(`genre:${g}`, `#${g}`)
+  if (filter.text) push('text', `“${filter.text}”`)
   return chips
 }
 
-module.exports = { parseQuery, sanitizeFilter, applyFilter, describeFilter, CATEGORY_WORDS }
+// Clear one facet of a filter, addressed by the key describeFilter() emitted.
+// Returns a new filter; an unknown key is a no-op copy.
+function removeFilterKey(filter, key) {
+  const next = { ...filter, genres: [...(filter.genres ?? [])] }
+  if (key === 'category')       next.category = null
+  else if (key === 'status')    next.status = null
+  else if (key === 'unrated')   next.unrated = false
+  else if (key === 'rating')  { next.ratingMin = null; next.ratingMax = null }
+  else if (key === 'ratingMin') next.ratingMin = null
+  else if (key === 'ratingMax') next.ratingMax = null
+  else if (key === 'year')     { next.yearMin = null; next.yearMax = null }
+  else if (key === 'dateYear') { next.dateYearMin = null; next.dateYearMax = null }
+  else if (key === 'text')      next.text = ''
+  else if (key.startsWith('genre:')) {
+    const g = key.slice(6).toLowerCase()
+    next.genres = next.genres.filter(x => String(x).toLowerCase() !== g)
+  }
+  return next
+}
+
+module.exports = { parseQuery, sanitizeFilter, applyFilter, describeFilter, removeFilterKey, CATEGORY_WORDS }

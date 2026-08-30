@@ -25,6 +25,12 @@ const EXAMPLE_PROMPTS = [
   'cozy stories about friendship',
 ]
 
+const ENGINE_LABELS = {
+  ollama:    'parsed by Ollama',
+  heuristic: 'parsed offline',
+  refined:   'filters edited',
+}
+
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
 
@@ -33,48 +39,63 @@ function scorePct(score) {
   return Math.round(Math.max(0, Math.min(1, score)) * 100)
 }
 
-function ResultRow({ entry, score, categories, onSelect }) {
-  const cat = categories.find(c => c.id === entry.category)
+// An entry row: the row body opens the entry for editing (the panel stays put
+// underneath, so closing the editor lands you back in your results), while the
+// trailing action leaves the panel and reveals the entry in the library grid.
+function ResultRow({ entry, subtitle, score, scoreTitle, onSelect, onReveal }) {
   return (
-    <li>
+    <li className="ai-result">
       <button className="search-modal-result ai-row-btn" onClick={() => onSelect(entry)}>
         <Cover className="search-modal-cover" src={entry.cover_url} alt="" compact />
         <div className="search-modal-info">
           <strong className="search-modal-title">{entry.title}</strong>
-          <span className="search-modal-sub">
-            {[cat?.label, entry.series, STATUS_LABELS[entry.status], entry.rating != null ? `★ ${entry.rating}` : null]
-              .filter(Boolean).join(' · ')}
-          </span>
+          <span className="search-modal-sub">{subtitle}</span>
         </div>
         {score != null && (
-          <span className="ai-score" title="Semantic match">
+          <span className="ai-score" title={scoreTitle}>
             <span className="ai-score-bar" style={{ width: `${scorePct(score)}%` }} />
             <span className="ai-score-num">{scorePct(score)}%</span>
           </span>
         )}
       </button>
+      <button
+        className="ai-row-action"
+        onClick={() => onReveal(entry)}
+        title="Show in library"
+        aria-label={`Show ${entry.title} in library`}
+      >
+        ↗
+      </button>
     </li>
   )
 }
 
-function AskTab({ categories, state, setState, onSelect }) {
+function AskTab({ categories, state, setState, onSelect, onReveal }) {
   const { query, response, busy } = state
   const inputRef = useRef(null)
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  async function runAsk(raw = query) {
+  // `refine` re-runs the current filter with one facet cleared, so dismissing a
+  // chip narrows the search without the user having to rewrite the sentence.
+  async function runAsk(raw = query, refine = null) {
     const q = String(raw).trim()
-    if (!q || busy) return
+    if (busy || (!q && !refine)) return
     setState(s => ({ ...s, query: q, busy: true }))
     try {
       const res = await window.ai.ask(q, {
         categories: categories.map(c => ({ id: c.id, label: c.label })),
+        refine,
       })
       setState(s => ({ ...s, response: res, busy: false }))
     } catch {
       setState(s => ({ ...s, response: { error: 'Something went wrong running that query.' }, busy: false }))
     }
+  }
+
+  function removeChip(key) {
+    if (!response?.filter) return
+    runAsk(query, { filter: response.filter, remove: key })
   }
 
   const count = response && !response.error ? response.results.length : null
@@ -109,9 +130,21 @@ function AskTab({ categories, state, setState, onSelect }) {
       {response && !response.error && (
         <>
           <div className="ai-chip-row">
-            {response.chips.map((c, i) => <span key={`${c}-${i}`} className="ai-chip">{c}</span>)}
+            {response.chips.map(c => (
+              <button
+                key={c.key}
+                className="ai-chip ai-chip-removable"
+                onClick={() => removeChip(c.key)}
+                disabled={busy}
+                title={`Remove “${c.label}” from this search`}
+                aria-label={`Remove filter ${c.label}`}
+              >
+                {c.label}
+                <span className="ai-chip-x" aria-hidden="true">✕</span>
+              </button>
+            ))}
             <span className="ai-chip ai-chip-dim">
-              {response.engine === 'ollama' ? 'parsed by Ollama' : 'parsed offline'}
+              {ENGINE_LABELS[response.engine] ?? response.engine}
               {response.semantic ? ' · semantic ranking' : ''}
             </span>
             <span className="ai-result-count">
@@ -119,12 +152,28 @@ function AskTab({ categories, state, setState, onSelect }) {
             </span>
           </div>
           {count === 0 ? (
-            <p className="search-empty">Nothing in your library matches that.</p>
+            <p className="search-empty">
+              {response.chips.length
+                ? 'Nothing matches all of those filters — try removing one.'
+                : 'Nothing in your library matches that.'}
+            </p>
           ) : (
             <ul className="search-modal-results ai-results">
-              {response.results.map(({ entry, score }) => (
-                <ResultRow key={entry.id} entry={entry} score={score} categories={categories} onSelect={onSelect} />
-              ))}
+              {response.results.map(({ entry, score }) => {
+                const cat = categories.find(c => c.id === entry.category)
+                return (
+                  <ResultRow
+                    key={entry.id}
+                    entry={entry}
+                    subtitle={[cat?.label, entry.series, STATUS_LABELS[entry.status], entry.rating != null ? `★ ${entry.rating}` : null]
+                      .filter(Boolean).join(' · ')}
+                    score={score}
+                    scoreTitle="Semantic match"
+                    onSelect={onSelect}
+                    onReveal={onReveal}
+                  />
+                )
+              })}
             </ul>
           )}
         </>
@@ -148,7 +197,7 @@ function AskTab({ categories, state, setState, onSelect }) {
   )
 }
 
-function ForYouTab({ categories, activeCat, onSelect }) {
+function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
   const [catId, setCatId]   = useState(activeCat?.id ?? categories[0]?.id)
   const [busy, setBusy]     = useState(false)
   const [recs, setRecs]     = useState(null)
@@ -209,21 +258,15 @@ function ForYouTab({ categories, activeCat, onSelect }) {
       {!busy && recs && recs.picks.length > 0 && (
         <ul className="search-modal-results ai-results">
           {recs.picks.map(({ entry, score, because }) => (
-            <li key={entry.id}>
-              <button className="search-modal-result ai-row-btn" onClick={() => onSelect(entry)}>
-                <Cover className="search-modal-cover" src={entry.cover_url} alt="" compact />
-                <div className="search-modal-info">
-                  <strong className="search-modal-title">{entry.title}</strong>
-                  <span className="search-modal-sub">
-                    {because ? `Because you liked ${because}` : 'From your backlog'}
-                  </span>
-                </div>
-                <span className="ai-score" title="Match with your taste profile">
-                  <span className="ai-score-bar" style={{ width: `${scorePct(score)}%` }} />
-                  <span className="ai-score-num">{scorePct(score)}%</span>
-                </span>
-              </button>
-            </li>
+            <ResultRow
+              key={entry.id}
+              entry={entry}
+              subtitle={because ? `Because you liked ${because}` : 'From your backlog'}
+              score={score}
+              scoreTitle="Match with your taste profile"
+              onSelect={onSelect}
+              onReveal={onReveal}
+            />
           ))}
         </ul>
       )}
@@ -243,8 +286,19 @@ function ForYouTab({ categories, activeCat, onSelect }) {
           <ul className="ai-fresh-list">
             {fresh.suggestions.map((s, i) => (
               <li key={`${s.title}-${i}`} className="ai-fresh-item">
-                <strong>{s.title}</strong>
-                {s.reason && <span>{s.reason}</span>}
+                <div className="ai-fresh-text">
+                  <strong>{s.title}</strong>
+                  {s.reason && <span>{s.reason}</span>}
+                </div>
+                {/* A suggestion the user can't act on is just trivia — this hands
+                    the title to the catalogue search so it can be added. */}
+                <button
+                  className="ai-secondary-btn"
+                  onClick={() => onAddTitle(s.title, catId)}
+                  aria-label={`Find and add ${s.title}`}
+                >
+                  Find &amp; add
+                </button>
               </li>
             ))}
           </ul>
@@ -257,28 +311,87 @@ function ForYouTab({ categories, activeCat, onSelect }) {
 }
 
 function SeriesTab({ categories, state, setState, onApplied }) {
-  const { catId, suggestions } = state
+  const { catId, suggestions, undo } = state
   const [busy, setBusy]         = useState(false)
   const [applying, setApplying] = useState(null) // index being applied
+  const [error, setError]       = useState(null)
+  const scanning = useRef(false)
+
+  // Scan as soon as the tab is shown for a category that hasn't been scanned —
+  // the old "Scan for series" button made an automatic feature feel manual.
+  // Terminates because scan() always leaves suggestions as an array; the ref
+  // keeps StrictMode's double-invoked effect from firing two scans.
+  useEffect(() => {
+    if (suggestions == null && !scanning.current) scan()
+  }, [catId, suggestions])
 
   async function scan() {
+    if (scanning.current) return
+    scanning.current = true
     setBusy(true)
+    setError(null)
     try {
       const found = await window.ai.detectSeries({ category: catId })
-      setState(s => ({ ...s, suggestions: found }))
+      // Editable copies: the user may rename a group or untick members before
+      // applying, and those edits must survive a tab switch like everything else.
+      setState(s => ({
+        ...s,
+        undo: null,
+        suggestions: found.map(f => ({ ...f, draftName: f.name, selected: [...f.entryIds] })),
+      }))
     } catch {
-      setState(s => ({ ...s, suggestions: [] }))
+      setState(s => ({ ...s, suggestions: [], undo: null }))
     }
+    scanning.current = false
     setBusy(false)
+  }
+
+  function edit(i, patch) {
+    setState(s => ({
+      ...s,
+      suggestions: s.suggestions.map((x, idx) => (idx === i ? { ...x, ...patch } : x)),
+    }))
+  }
+
+  function toggleMember(i, id) {
+    const s = suggestions[i]
+    const next = s.selected.includes(id)
+      ? s.selected.filter(x => x !== id)
+      : [...s.selected, id]
+    edit(i, { selected: next })
   }
 
   async function apply(s, i) {
     setApplying(i)
-    await window.ai.applySeries({
-      category: s.category, name: s.name, seriesId: s.seriesId, entryIds: s.entryIds,
+    setError(null)
+    const res = await window.ai.applySeries({
+      category: s.category,
+      name: s.draftName,
+      seriesId: s.seriesId,
+      entryIds: s.selected,
     })
     setApplying(null)
-    setState(prev => ({ ...prev, suggestions: prev.suggestions.filter((_, idx) => idx !== i) }))
+    if (!res?.ok) { setError(res?.error ?? 'Could not apply that grouping.'); return }
+    setState(prev => ({
+      ...prev,
+      suggestions: prev.suggestions.filter((_, idx) => idx !== i),
+      undo: {
+        name: s.draftName,
+        count: s.selected.length,
+        seriesId: res.seriesId,
+        entryIds: s.selected,
+        created: res.created,
+      },
+    }))
+    onApplied?.()
+  }
+
+  async function undoLast() {
+    if (!undo) return
+    await window.ai.undoSeries({
+      seriesId: undo.seriesId, entryIds: undo.entryIds, created: undo.created,
+    })
+    setState(s => ({ ...s, undo: null }))
     onApplied?.()
   }
 
@@ -295,39 +408,72 @@ function SeriesTab({ categories, state, setState, onApplied }) {
           id="ai-series-cat"
           className="sort-select ai-cat-select"
           value={catId}
-          onChange={e => setState(s => ({ ...s, catId: e.target.value, suggestions: null }))}
+          onChange={e => setState(s => ({ ...s, catId: e.target.value, suggestions: null, undo: null }))}
         >
           {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
-        <button className="ai-primary-btn" onClick={scan} disabled={busy}>
-          {busy ? 'Scanning…' : 'Scan for series'}
+        <button className="ai-secondary-btn" onClick={scan} disabled={busy}>
+          {busy ? 'Scanning…' : 'Rescan'}
         </button>
       </div>
 
-      {suggestions == null && !busy && (
-        <p className="ai-hint">
-          Finds entries that look like installments of the same series — “Vol. 2”,
-          “Season 3”, shared subtitles — and groups them for you. Nothing is changed
-          until you apply a suggestion.
-        </p>
+      {undo && (
+        <div className="ai-undo" role="status">
+          <span>Grouped {undo.count} {undo.count === 1 ? 'entry' : 'entries'} under “{undo.name}”.</span>
+          <button className="ai-undo-btn" onClick={undoLast}>Undo</button>
+        </div>
       )}
+
+      {error && <p className="search-empty">{error}</p>}
+
+      {busy && <p className="ai-hint">Looking for installments of the same series…</p>}
+
       {suggestions != null && suggestions.length === 0 && !busy && (
         <p className="search-empty">No series groupings detected among unassigned entries.</p>
       )}
+
       {suggestions != null && suggestions.length > 0 && (
         <ul className="ai-series-list">
           {suggestions.map((s, i) => (
             <li key={`${s.name}-${i}`} className="ai-series-item">
               <div className="ai-series-info">
-                <strong>{s.name}</strong>
+                {s.matchType === 'existing' ? (
+                  <strong>{s.name}</strong>
+                ) : (
+                  <>
+                    <label className="sr-only" htmlFor={`ai-series-name-${i}`}>Series name</label>
+                    <input
+                      id={`ai-series-name-${i}`}
+                      className="ai-series-name"
+                      value={s.draftName}
+                      onChange={e => edit(i, { draftName: e.target.value })}
+                    />
+                  </>
+                )}
                 <span className="ai-series-kind">
-                  {s.matchType === 'existing' ? 'add to existing series' : 'new series'} · {s.entryIds.length} entries
+                  {s.matchType === 'existing' ? 'add to existing series' : 'new series'} ·{' '}
+                  {s.selected.length} of {s.entryIds.length} selected
                 </span>
-                <span className="ai-series-titles">{s.titles.join(' · ')}</span>
+                {/* Ticking members off is the escape hatch for a heuristic that
+                    over-grouped — better than discarding the whole suggestion. */}
+                <ul className="ai-series-members">
+                  {s.entryIds.map((id, j) => (
+                    <li key={id}>
+                      <label className="ai-series-member">
+                        <input
+                          type="checkbox"
+                          checked={s.selected.includes(id)}
+                          onChange={() => toggleMember(i, id)}
+                        />
+                        <span>{s.titles[j]}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
               </div>
               <button
                 className="ai-primary-btn"
-                disabled={applying != null}
+                disabled={applying != null || !s.selected.length || !s.draftName.trim()}
                 onClick={() => apply(s, i)}
               >
                 {applying === i ? 'Applying…' : 'Apply'}
@@ -340,10 +486,13 @@ function SeriesTab({ categories, state, setState, onApplied }) {
   )
 }
 
-export default function AiPanel({ open, categories = [], activeCat, color, onClose, onSelectEntry, onLibraryChanged }) {
+export default function AiPanel({
+  open, categories = [], activeCat, color,
+  onClose, onSelectEntry, onRevealEntry, onAddTitle, onLibraryChanged,
+}) {
   const [tab, setTab] = useState('ask')
   const [ask, setAsk] = useState({ query: '', response: null, busy: false })
-  const [series, setSeries] = useState({ catId: null, suggestions: null })
+  const [series, setSeries] = useState({ catId: null, suggestions: null, undo: null })
   const [index, setIndex] = useState(null)
   const dialogRef  = useRef(null)
   const restoreRef = useRef(null)
@@ -456,10 +605,22 @@ export default function AiPanel({ open, categories = [], activeCat, color, onClo
           )}
 
           {tab === 'ask' && (
-            <AskTab categories={categories} state={ask} setState={setAsk} onSelect={onSelectEntry} />
+            <AskTab
+              categories={categories}
+              state={ask}
+              setState={setAsk}
+              onSelect={onSelectEntry}
+              onReveal={onRevealEntry}
+            />
           )}
           {tab === 'foryou' && (
-            <ForYouTab categories={categories} activeCat={activeCat} onSelect={onSelectEntry} />
+            <ForYouTab
+              categories={categories}
+              activeCat={activeCat}
+              onSelect={onSelectEntry}
+              onReveal={onRevealEntry}
+              onAddTitle={onAddTitle}
+            />
           )}
           {tab === 'series' && (
             <SeriesTab

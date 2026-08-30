@@ -8,7 +8,7 @@
 const crypto = require('crypto')
 const dbApi  = require('../db')
 const engine = require('./embeddings')
-const { parseQuery, sanitizeFilter, applyFilter, describeFilter } = require('./nlFilter')
+const { parseQuery, sanitizeFilter, applyFilter, describeFilter, removeFilterKey } = require('./nlFilter')
 const { detectSeries } = require('./seriesDetect')
 const { buildTasteProfile, rankCandidates, nearestLiked } = require('./recommend')
 const ollama = require('./ollama')
@@ -154,7 +154,13 @@ function llmFilterPrompt(query, { categories, genres }) {
 // Parse the query (Ollama if enabled, offline heuristics otherwise), filter
 // the library with it, and semantically rank the remainder when the query
 // has a thematic component.
-async function askLibrary(query, { categories = [] } = {}) {
+//
+// `refine` lets the panel narrow an existing result set without rephrasing:
+// { filter, remove } re-uses the filter already shown as chips and clears one
+// facet by its chip key. The filter still crosses IPC from the renderer, so it
+// is re-sanitized here rather than trusted — but full-range rating bounds are
+// preserved, since a filter we produced meant them literally.
+async function askLibrary(query, { categories = [], refine = null } = {}) {
   await ensureIndex()
   const entries = dbApi.getEntries()
   const genres = genreVocab(entries)
@@ -162,9 +168,18 @@ async function askLibrary(query, { categories = [] } = {}) {
 
   let filter = null
   let engineUsed = 'heuristic'
+
+  if (refine?.filter) {
+    const base = sanitizeFilter(refine.filter, { categories, genres, dropFullRangeBounds: false })
+    if (base) {
+      filter = refine.remove ? removeFilterKey(base, refine.remove) : base
+      engineUsed = 'refined'
+    }
+  }
+
   // available() is the circuit breaker — an unreachable server is skipped
   // silently for a minute rather than re-failing on every query.
-  if (ollama.enabled(settings) && ollama.available()) {
+  if (!filter && ollama.enabled(settings) && ollama.available()) {
     try {
       const raw = await ollama.generateJson(settings, llmFilterPrompt(query, { categories, genres }))
       filter = sanitizeFilter(raw, { categories, genres })
@@ -299,16 +314,40 @@ async function detectSeriesSuggestions({ category }) {
   return suggestions
 }
 
-// Create/reuse the series and assign every suggested entry to it.
+// Create/reuse the series and assign every suggested entry to it. The panel may
+// have renamed the group or unticked members first, so nothing here assumes the
+// payload still matches what detectSeries proposed. `created` is reported back
+// so undo knows whether the series is ours to delete.
 function applySeriesSuggestion({ category, name, seriesId, entryIds }) {
+  const ids = (Array.isArray(entryIds) ? entryIds : []).filter(id => Number.isInteger(id))
+  if (!ids.length) return { ok: false, error: 'Nothing selected to group.' }
+
   let target = seriesId
+  let created = false
   if (target == null) {
-    const created = dbApi.addSeries(category, name)
-    target = created.id
+    const label = String(name ?? '').trim()
+    if (!label) return { ok: false, error: 'A new series needs a name.' }
+    const before = new Set(dbApi.getSeries(category).map(s => s.id))
+    const row = dbApi.addSeries(category, label)
+    target = row.id
+    // addSeries returns the existing row on a UNIQUE conflict; only a genuinely
+    // new id may be deleted on undo.
+    created = !before.has(row.id)
   }
-  for (const id of entryIds) dbApi.setEntrySeries(id, target)
+  for (const id of ids) dbApi.setEntrySeries(id, target)
   markLibraryDirty() // series name is part of the embed text
-  return { ok: true, seriesId: target, assigned: entryIds.length }
+  return { ok: true, seriesId: target, assigned: ids.length, created }
+}
+
+// Reverse an apply: detach the entries we just assigned, and drop the series if
+// this apply is what created it. Entries eligible for detection always had a
+// null series_id, so unassigning restores their prior state exactly.
+function undoSeriesSuggestion({ seriesId, entryIds, created }) {
+  const ids = (Array.isArray(entryIds) ? entryIds : []).filter(id => Number.isInteger(id))
+  for (const id of ids) dbApi.setEntrySeries(id, null)
+  if (created && seriesId != null) dbApi.deleteSeries(seriesId)
+  markLibraryDirty()
+  return { ok: true, detached: ids.length }
 }
 
 // ── Status + registration ────────────────────────────────────────
@@ -348,11 +387,12 @@ function registerAiHandlers({ readSettings, send, modelCacheDir }) {
   ipcMain.handle('ai:suggestNew',   (_e, opts)          => suggestNewTitles(opts ?? {}))
   ipcMain.handle('ai:detectSeries', (_e, opts)          => detectSeriesSuggestions(opts ?? {}))
   ipcMain.handle('ai:applySeries',  (_e, payload)       => applySeriesSuggestion(payload))
+  ipcMain.handle('ai:undoSeries',   (_e, payload)       => undoSeriesSuggestion(payload ?? {}))
   ipcMain.handle('ai:ollamaTest',   ()                  => ollama.ping(readSettings()))
 }
 
 module.exports = {
   configure, registerAiHandlers, markLibraryDirty, ensureIndex,
   semanticSearch, askLibrary, recommend, detectSeriesSuggestions,
-  applySeriesSuggestion, entryText, status,
+  applySeriesSuggestion, undoSeriesSuggestion, entryText, status,
 }

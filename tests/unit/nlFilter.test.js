@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseQuery, sanitizeFilter, applyFilter, describeFilter } from '../../electron/ai/nlFilter.js'
+import { parseQuery, sanitizeFilter, applyFilter, describeFilter, removeFilterKey } from '../../electron/ai/nlFilter.js'
 
 const CATS = [
   { id: 'book',  label: 'Books' },
@@ -213,6 +213,30 @@ describe('sanitizeFilter (LLM output)', () => {
     expect(applyFilter(entries, f).map(e => e.id)).toEqual([1, 2])
   })
 
+  it('leaves explicitly-null bounds null instead of clamping them', () => {
+    // Number(null) is 0 and finite, so an unguarded clamp turned a null yearMin
+    // into 1000 — which applyFilter then used to drop every year-less entry.
+    const f = sanitizeFilter(
+      { yearMin: null, yearMax: null, dateYearMin: null, dateYearMax: '', ratingMin: null }, opts)
+    expect(f).toMatchObject({
+      yearMin: null, yearMax: null, dateYearMin: null, dateYearMax: null, ratingMin: null,
+    })
+  })
+
+  it('does not hide year-less entries for a filter with no year bounds', () => {
+    const entries = [{ id: 1, category: 'movie', status: 'completed', rating: 8, year: null, genres: '' }]
+    const f = sanitizeFilter({ category: 'movie', yearMin: null, yearMax: null }, opts)
+    expect(applyFilter(entries, f)).toHaveLength(1)
+  })
+
+  it('keeps edge-of-scale bounds when re-sanitizing our own filter', () => {
+    // Round-tripping a chip removal must not silently rewrite "rated 1" into
+    // "rating ≤ 1" — that guard is only for lazy LLM output.
+    const round = { ...opts, dropFullRangeBounds: false }
+    expect(sanitizeFilter({ ratingMin: 1, ratingMax: 1 }, round)).toMatchObject({ ratingMin: 1, ratingMax: 1 })
+    expect(sanitizeFilter({ ratingMax: 10 }, round).ratingMax).toBe(10)
+  })
+
   it('ignores non-array genres and non-string text', () => {
     const f = sanitizeFilter({ genres: 'Sci-Fi', text: 42 }, opts)
     expect(f.genres).toEqual([])
@@ -226,9 +250,49 @@ describe('sanitizeFilter (LLM output)', () => {
 
 describe('describeFilter', () => {
   it('renders human-readable chips', () => {
-    const chips = describeFilter(parse('completed anime rated 8+'), CATS)
-    expect(chips).toContain('Anime')
-    expect(chips).toContain('Completed')
-    expect(chips).toContain('rating ≥ 8')
+    const labels = describeFilter(parse('completed anime rated 8+'), CATS).map(c => c.label)
+    expect(labels).toContain('Anime')
+    expect(labels).toContain('Completed')
+    expect(labels).toContain('rating ≥ 8')
+  })
+
+  it('gives every chip a key removeFilterKey understands', () => {
+    const filter = parse('completed anime rated 8+ from 2019 about revenge')
+    for (const chip of describeFilter(filter, CATS)) {
+      const next = removeFilterKey(filter, chip.key)
+      const remaining = describeFilter(next, CATS).map(c => c.key)
+      expect(remaining).not.toContain(chip.key)
+    }
+  })
+
+  it('keys genre chips by name so one of several can be dropped', () => {
+    const filter = parse('sci-fi horror movies', { genres: ['Sci-Fi', 'Horror'] })
+    const next = removeFilterKey(filter, 'genre:Horror')
+    expect(next.genres).toEqual(['Sci-Fi'])
+  })
+})
+
+describe('removeFilterKey', () => {
+  const base = parse('completed anime rated 8 about revenge')
+
+  it('clears both bounds for an exact rating chip', () => {
+    const next = removeFilterKey(base, 'rating')
+    expect(next.ratingMin).toBeNull()
+    expect(next.ratingMax).toBeNull()
+  })
+
+  it('leaves the original filter untouched', () => {
+    removeFilterKey(base, 'category')
+    expect(base.category).toBe('anime')
+  })
+
+  it('ignores an unknown key', () => {
+    expect(removeFilterKey(base, 'nonsense')).toEqual(base)
+  })
+
+  it('drops the semantic phrase without touching the structured facets', () => {
+    const next = removeFilterKey(base, 'text')
+    expect(next.text).toBe('')
+    expect(next.status).toBe('completed')
   })
 })

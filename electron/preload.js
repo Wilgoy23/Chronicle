@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('ai', {
   suggestNew:   (opts)         => ipcRenderer.invoke('ai:suggestNew', opts),
   detectSeries: (opts)         => ipcRenderer.invoke('ai:detectSeries', opts),
   applySeries:  (payload)      => ipcRenderer.invoke('ai:applySeries', payload),
+  undoSeries:   (payload)      => ipcRenderer.invoke('ai:undoSeries', payload),
   ollamaTest:   ()             => ipcRenderer.invoke('ai:ollamaTest'),
   onIndexProgress: (cb) => {
     const handler = (_e, progress) => cb(progress)
