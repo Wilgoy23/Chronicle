@@ -56,6 +56,11 @@ contextBridge.exposeInMainWorld('ai', {
     ipcRenderer.on('ai:indexProgress', handler)
     return () => ipcRenderer.removeListener('ai:indexProgress', handler)
   },
+  onModelProgress: (cb) => {
+    const handler = (_e, progress) => cb(progress)
+    ipcRenderer.on('ai:modelProgress', handler)
+    return () => ipcRenderer.removeListener('ai:modelProgress', handler)
+  },
 })
 
 contextBridge.exposeInMainWorld('releases', {

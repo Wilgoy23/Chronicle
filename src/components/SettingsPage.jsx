@@ -185,6 +185,7 @@ function AiSection({ settings, onSave }) {
   const ai = settings.ai ?? {}
   const [status, setStatus]     = useState(null)
   const [progress, setProgress] = useState(null)
+  const [download, setDownload] = useState(null)
   const [rebuilding, setRebuilding] = useState(false)
   const [ollamaUrl, setOllamaUrl]     = useState(ai.ollamaUrl ?? 'http://127.0.0.1:11434')
   const [ollamaModel, setOllamaModel] = useState(ai.ollamaModel ?? 'llama3.2')
@@ -194,12 +195,30 @@ function AiSection({ settings, onSave }) {
 
   useEffect(() => {
     refreshStatus()
-    const off = window.ai.onIndexProgress(p => {
+    const offIndex = window.ai.onIndexProgress(p => {
       setProgress(p)
       if (p.done) refreshStatus()
     })
-    return off
+    // Per-file byte counts for the one-time model download, summed so the
+    // percentage doesn't jump backwards each time a new file starts.
+    const files = new Map()
+    const offModel = window.ai.onModelProgress(p => {
+      files.set(p.file, { loaded: p.loaded ?? 0, total: p.total ?? 0 })
+      let loaded = 0, total = 0
+      for (const f of files.values()) { loaded += f.loaded; total += f.total }
+      setDownload(total ? Math.min(100, Math.round((loaded / total) * 100)) : null)
+    })
+    return () => { offIndex(); offModel() }
   }, [])
+
+  // The backend decision now resolves in another process, so nothing pushes it
+  // here when it lands. Poll while it is pending rather than leaving the row
+  // reading "Loading local model…" for the rest of the session.
+  useEffect(() => {
+    if (status?.backend !== 'loading') return
+    const t = setInterval(refreshStatus, 2000)
+    return () => clearInterval(t)
+  }, [status?.backend])
 
   async function rebuild() {
     setRebuilding(true)
@@ -240,7 +259,10 @@ function AiSection({ settings, onSave }) {
         <div className="setting-info">
           <label>Local model</label>
           <span className="setting-hint">
-            {backend.text}{status?.model ? ` · ${status.model}` : ''}
+            {status?.backend === 'loading' && download != null
+              ? `Downloading model… ${download}%`
+              : backend.text}
+            {status?.model ? ` · ${status.model}` : ''}
             {status?.error ? ` — ${status.error}` : ''}
           </span>
         </div>
