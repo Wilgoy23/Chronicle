@@ -7,7 +7,7 @@ const {
   exportData, importData, getDbPath, closeDb, validateBackupFile, backupTo,
 } = require('./db')
 const { registerHandlers } = require('./ipc')
-const { registerAiHandlers, markLibraryDirty } = require('./ai/aiService')
+const { registerAiHandlers, markLibraryDirty, shutdownAi } = require('./ai/aiService')
 const { runReleaseScan }   = require('./releaseChecker')
 const { toCsv }            = require('./csv')
 const { mapGoodreads }     = require('./importers/goodreads')
@@ -288,6 +288,10 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+// The embedding model runs in a utilityProcess; stop it explicitly so a slow
+// reindex can't keep a child alive after the window it serves has gone.
+app.on('before-quit', () => shutdownAi())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

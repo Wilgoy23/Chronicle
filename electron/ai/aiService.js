@@ -369,7 +369,12 @@ function status() {
 function configure({ readSettings, send, modelCacheDir } = {}) {
   if (readSettings) getSettings = readSettings
   if (send) broadcast = send
-  if (modelCacheDir) engine.configure({ modelCacheDir })
+  engine.configure({
+    modelCacheDir,
+    // The first-run model download no longer blocks the window, which means an
+    // idle-looking minute is now the failure mode to avoid rather than a freeze.
+    onModelProgress: p => broadcast('ai:modelProgress', p),
+  })
 }
 
 function registerAiHandlers({ readSettings, send, modelCacheDir }) {
@@ -391,8 +396,14 @@ function registerAiHandlers({ readSettings, send, modelCacheDir }) {
   ipcMain.handle('ai:ollamaTest',   ()                  => ollama.ping(readSettings()))
 }
 
+// Called on quit: the embedding worker is a child process, so it needs telling.
+function shutdownAi() {
+  clearTimeout(dirtyTimer)
+  engine.shutdown()
+}
+
 module.exports = {
-  configure, registerAiHandlers, markLibraryDirty, ensureIndex,
+  configure, registerAiHandlers, markLibraryDirty, ensureIndex, shutdownAi,
   semanticSearch, askLibrary, recommend, detectSeriesSuggestions,
   applySeriesSuggestion, undoSeriesSuggestion, entryText, status,
 }
