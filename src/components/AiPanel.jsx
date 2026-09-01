@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Cover from './Cover'
-import { STATUS_LABELS } from '../App'
+import { STATUS_LABELS, ICONS } from '../App'
 
 // The offline AI hub: "Ask" (natural-language + semantic search over the
 // library), "For You" (taste-profile ranked backlog, plus optional Ollama
@@ -25,18 +25,51 @@ const EXAMPLE_PROMPTS = [
   'cozy stories about friendship',
 ]
 
+// How the query was turned into filters. This is provenance, not a filter, so
+// it reads as a quiet footnote rather than a chip sitting at the same weight as
+// the user's own constraints — and the wording says what it means for them
+// ("on-device") instead of naming the implementation ("parsed offline").
 const ENGINE_LABELS = {
-  ollama:    'parsed by Ollama',
-  heuristic: 'parsed offline',
-  refined:   'filters edited',
+  ollama:    { text: 'read by Ollama',   hint: 'Your local Ollama model turned this sentence into filters.' },
+  heuristic: { text: 'read on-device',   hint: 'Chronicle parsed this sentence itself. Nothing left your machine.' },
+  refined:   { text: 'filters edited',   hint: 'Filters were changed directly rather than re-read from your wording.' },
 }
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
 
-function scorePct(score) {
-  // Cosine similarity ~[0,1] for these models; clamp for display.
-  return Math.round(Math.max(0, Math.min(1, score)) * 100)
+// A cosine similarity is not a percentage of anything a reader can name — "63%"
+// invited the question "of what?" and had no answer. The bar that carried it is
+// gone too: the list is already sorted by score, so the only thing left for a
+// per-row meter to say is how good the match is in absolute terms, which three
+// words say better than a 2px dash. The raw figure lives in the tooltip.
+const MATCH_BANDS = [
+  { min: 0.60, label: 'Strong match' },
+  { min: 0.45, label: 'Good match'   },
+  { min: -Infinity, label: 'Loose match' },
+]
+
+function matchBand(score) {
+  // Falls through on NaN, which cosine can produce for a zero-length vector.
+  return MATCH_BANDS.find(b => score >= b.min) ?? MATCH_BANDS[MATCH_BANDS.length - 1]
+}
+
+// Placeholder rows shaped like the results they precede, so the panel keeps its
+// height and the list doesn't jump when the real rows land.
+function SkeletonRows({ count = 3 }) {
+  return (
+    <ul className="ai-skeletons" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <li key={i} className="ai-skeleton-row">
+          <span className="ai-skeleton ai-skeleton-cover" />
+          <span className="ai-skeleton-lines">
+            <span className="ai-skeleton ai-skeleton-title" />
+            <span className="ai-skeleton ai-skeleton-sub" />
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 // An entry row: the row body opens the entry for editing (the panel stays put
@@ -52,9 +85,8 @@ function ResultRow({ entry, subtitle, score, scoreTitle, onSelect, onReveal }) {
           <span className="search-modal-sub">{subtitle}</span>
         </div>
         {score != null && (
-          <span className="ai-score" title={scoreTitle}>
-            <span className="ai-score-bar" style={{ width: `${scorePct(score)}%` }} />
-            <span className="ai-score-num">{scorePct(score)}%</span>
+          <span className="ai-score" title={`${scoreTitle} — similarity ${score.toFixed(2)}`}>
+            {matchBand(score).label}
           </span>
         )}
       </button>
@@ -64,7 +96,7 @@ function ResultRow({ entry, subtitle, score, scoreTitle, onSelect, onReveal }) {
         title="Show in library"
         aria-label={`Show ${entry.title} in library`}
       >
-        ↗
+        {ICONS.external}
       </button>
     </li>
   )
@@ -127,6 +159,10 @@ function AskTab({ categories, state, setState, onSelect, onReveal }) {
 
       {response?.error && <p className="search-empty">{response.error}</p>}
 
+      {/* Only on a first query — once there are results, they stay put while a
+          refinement runs rather than collapsing into placeholders. */}
+      {busy && !response && <SkeletonRows count={4} />}
+
       {response && !response.error && (
         <>
           <div className="ai-chip-row">
@@ -143,12 +179,12 @@ function AskTab({ categories, state, setState, onSelect, onReveal }) {
                 <span className="ai-chip-x" aria-hidden="true">✕</span>
               </button>
             ))}
-            <span className="ai-chip ai-chip-dim">
-              {ENGINE_LABELS[response.engine] ?? response.engine}
-              {response.semantic ? ' · semantic ranking' : ''}
-            </span>
             <span className="ai-result-count">
               {count} {count === 1 ? 'result' : 'results'}
+            </span>
+            <span className="ai-engine-note" title={ENGINE_LABELS[response.engine]?.hint}>
+              {ENGINE_LABELS[response.engine]?.text ?? response.engine}
+              {response.semantic ? ', ranked by meaning' : ''}
             </span>
           </div>
           {count === 0 ? (
@@ -251,7 +287,7 @@ function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
         <span className="ai-hint-inline">What to pick next, ranked against what you loved.</span>
       </div>
 
-      {busy && <p className="ai-hint">Ranking your backlog…</p>}
+      {busy && <SkeletonRows count={4} />}
       {!busy && recs && recs.picks.length === 0 && (
         <p className="search-empty">{emptyText[recs.reason] ?? 'No picks yet.'}</p>
       )}
@@ -426,7 +462,7 @@ function SeriesTab({ categories, state, setState, onApplied }) {
 
       {error && <p className="search-empty">{error}</p>}
 
-      {busy && <p className="ai-hint">Looking for installments of the same series…</p>}
+      {busy && <SkeletonRows count={2} />}
 
       {suggestions != null && suggestions.length === 0 && !busy && (
         <p className="search-empty">No series groupings detected among unassigned entries.</p>

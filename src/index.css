@@ -3791,32 +3791,27 @@ body {
   padding: 0.2rem 0.65rem;
 }
 
-.ai-chip-dim {
-  background: none;
-  border-color: var(--border);
-  color: var(--text-mute);
+/* Provenance, not a filter: no chip shell, so it stops competing with the
+   removable chips beside it for the reader's attention. */
+.ai-engine-note {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  cursor: help;
 }
+
+/* Separates it from the result count without another element in the markup. */
+.ai-engine-note::before { content: '·'; margin-right: 0.4rem; opacity: 0.6; }
 
 .ai-results { padding: 0; }
 
+/* Words, not a meter — see the note on MATCH_BANDS in AiPanel.jsx. */
 .ai-score {
-  align-items: center;
-  display: flex;
+  color: var(--text-dim);
   flex-shrink: 0;
-  gap: 0.45rem;
-  width: 92px;
+  font-size: 0.7rem;
+  text-align: right;
+  white-space: nowrap;
 }
-
-.ai-score-bar {
-  background: var(--accent);
-  border-radius: 2px;
-  display: block;
-  height: 3px;
-  max-width: 52px;
-  opacity: 0.8;
-}
-
-.ai-score-num { color: var(--text-mute); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 
 .ai-hint { color: var(--text-mute); font-size: 0.82rem; line-height: 1.5; }
 .ai-hint-inline { color: var(--text-mute); font-size: 0.76rem; }
@@ -4115,3 +4110,73 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ai-row-action, .ai-secondary-btn, .ai-chip-removable { transition: none; }
 }
+
+/* ── AI panel: loading placeholders, icon trigger, light-mode accents (P3) ── */
+
+/* Shaped like the rows they stand in for, so the panel holds its height and
+   nothing jumps when real results replace them. */
+.ai-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ai-skeleton-row {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.5rem 0.6rem;
+}
+
+.ai-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 25%,
+    var(--surface2) 37%,
+    var(--surface) 63%
+  );
+  background-size: 400% 100%;
+  animation: ai-shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+  display: block;
+}
+
+.ai-skeleton-cover { border-radius: 5px; flex-shrink: 0; height: 46px; width: 32px; }
+.ai-skeleton-lines { display: flex; flex: 1; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.ai-skeleton-title { height: 11px; max-width: 260px; width: 62%; }
+.ai-skeleton-sub   { height: 9px;  max-width: 190px; width: 38%; }
+
+@keyframes ai-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* The trigger carries an SVG now instead of a sparkle emoji; align it with the
+   label the way the other icon+text buttons in the strip do. */
+.ai-open-btn { align-items: center; display: inline-flex; gap: 0.4rem; }
+.ai-open-btn svg { flex-shrink: 0; }
+
+.ai-row-action svg { display: block; }
+
+/* Light mode: category accents are chosen for a dark ground, and raw accent
+   text on the light panel measures 1.35:1 (amber) to 2.33:1 (lilac) — far under
+   4.5. Mixing 48% accent into the ink colour clears 4.5:1 for every category
+   (amber, the worst, lands at 4.64) while keeping the hue recognisable.
+   The mix has to sit on the element rather than in a token on :root: --accent
+   is set per-element by inline style, and a custom property would resolve it
+   once against the root value instead of the category's own. */
+:root[data-theme="light"] .ai-primary-btn,
+:root[data-theme="light"] .ai-secondary-btn,
+:root[data-theme="light"] .ai-chip,
+:root[data-theme="light"] .ai-series-kind,
+:root[data-theme="light"] .ai-undo-btn,
+:root[data-theme="light"] .ai-tab-btn.active {
+  color: color-mix(in srgb, var(--accent) 48%, #10101c);
+}
+
+/* --text-mute is 0.4 alpha in light mode, which lands near 3:1. This is the
+   result count, not decoration, so it gets the readable token. */
+.ai-result-count { color: var(--text-dim); }
