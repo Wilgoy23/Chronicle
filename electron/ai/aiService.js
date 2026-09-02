@@ -11,6 +11,7 @@ const engine = require('./embeddings')
 const { parseQuery, sanitizeFilter, applyFilter, describeFilter, removeFilterKey } = require('./nlFilter')
 const { detectSeries } = require('./seriesDetect')
 const { buildTasteProfile, rankCandidates, nearestLiked } = require('./recommend')
+const { selectSeeds, buildSuggestPrompt, SEED_STATUS_TEXT } = require('./suggestNew')
 const ollama = require('./ollama')
 
 let broadcast = () => {}          // (channel, payload) → renderer
@@ -249,7 +250,7 @@ async function recommend({ category = null, limit = 10 } = {}) {
 
 // Fresh titles the library doesn't have — the one feature that genuinely
 // needs a generative model, hence Ollama-only.
-async function suggestNewTitles({ category, categoryLabel }) {
+async function suggestNewTitles({ category, categoryLabel, genre = '', status = 'all' }) {
   const settings = getSettings()
   if (!ollama.enabled(settings)) return { ok: false, error: 'Ollama is not enabled in Settings → AI.' }
   if (!ollama.available()) {
@@ -257,20 +258,22 @@ async function suggestNewTitles({ category, categoryLabel }) {
   }
 
   const entries = dbApi.getEntries(category)
+  // Deduped against the whole library, not the seed set: a title is already
+  // owned whatever genre or status was used to ask for it.
   const owned = new Set(entries.map(e => e.title.toLowerCase()))
-  const top = entries
-    .filter(e => e.rating != null)
-    .sort((a, b) => b.rating - a.rating)
-    .slice(0, 20)
-  if (!top.length) return { ok: false, error: 'Rate a few entries first so there is taste to go on.' }
+  const { seeds, genreSeeded } = selectSeeds(entries, { genre, status })
+  if (!seeds.length) {
+    return {
+      ok: false,
+      error: status === 'all'
+        ? 'Rate a few entries first so there is taste to go on.'
+        : `No rated ${SEED_STATUS_TEXT[status] ?? status} entries to go on — rate a few, or switch “Based on” to everything.`,
+    }
+  }
 
-  const prompt = [
-    `The user tracks ${categoryLabel || category} they consume. Their top-rated titles (rating out of 10):`,
-    ...top.map(e => `- ${e.title}${e.year ? ` (${e.year})` : ''}: ${e.rating}/10`),
-    '',
-    `Suggest exactly 5 real, well-known ${categoryLabel || category} titles they do NOT already have and would likely love.`,
-    'Return ONLY JSON: {"suggestions": [{"title": string, "reason": string (one short sentence)}]}',
-  ].join('\n')
+  const prompt = buildSuggestPrompt({
+    seeds, categoryLabel: categoryLabel || category, genre, status,
+  })
 
   try {
     const raw = await ollama.generateJson(settings, prompt, { timeoutMs: 60000 })
@@ -280,7 +283,7 @@ async function suggestNewTitles({ category, categoryLabel }) {
       .map(s => ({ title: s.title.trim(), reason: typeof s.reason === 'string' ? s.reason.trim() : '' }))
       .filter(s => !owned.has(s.title.toLowerCase()))
       .slice(0, 5)
-    return { ok: true, suggestions }
+    return { ok: true, suggestions, seedCount: seeds.length, genreSeeded }
   } catch (err) {
     return { ok: false, error: `Ollama request failed: ${String(err?.message ?? err)}` }
   }
@@ -390,6 +393,10 @@ function registerAiHandlers({ readSettings, send, modelCacheDir }) {
   ipcMain.handle('ai:ask',          (_e, query, opts)   => askLibrary(query, opts ?? {}))
   ipcMain.handle('ai:recommend',    (_e, opts)          => recommend(opts ?? {}))
   ipcMain.handle('ai:suggestNew',   (_e, opts)          => suggestNewTitles(opts ?? {}))
+  // The genre vocabulary the Fresh picks field offers. Needed before the
+  // suggest call, and for any category — not just the one on screen — so it
+  // can't be derived from what the renderer already holds.
+  ipcMain.handle('ai:genres',       (_e, category)      => genreVocab(dbApi.getEntries(category)).sort())
   ipcMain.handle('ai:detectSeries', (_e, opts)          => detectSeriesSuggestions(opts ?? {}))
   ipcMain.handle('ai:applySeries',  (_e, payload)       => applySeriesSuggestion(payload))
   ipcMain.handle('ai:undoSeries',   (_e, payload)       => undoSeriesSuggestion(payload ?? {}))
@@ -404,6 +411,6 @@ function shutdownAi() {
 
 module.exports = {
   configure, registerAiHandlers, markLibraryDirty, ensureIndex, shutdownAi,
-  semanticSearch, askLibrary, recommend, detectSeriesSuggestions,
+  semanticSearch, askLibrary, recommend, suggestNewTitles, detectSeriesSuggestions,
   applySeriesSuggestion, undoSeriesSuggestion, entryText, status,
 }

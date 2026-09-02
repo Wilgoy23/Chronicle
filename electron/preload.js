@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('ai', {
   ask:          (query, opts)  => ipcRenderer.invoke('ai:ask', query, opts),
   recommend:    (opts)         => ipcRenderer.invoke('ai:recommend', opts),
   suggestNew:   (opts)         => ipcRenderer.invoke('ai:suggestNew', opts),
+  genres:       (category)     => ipcRenderer.invoke('ai:genres', category),
   detectSeries: (opts)         => ipcRenderer.invoke('ai:detectSeries', opts),
   applySeries:  (payload)      => ipcRenderer.invoke('ai:applySeries', payload),
   undoSeries:   (payload)      => ipcRenderer.invoke('ai:undoSeries', payload),
