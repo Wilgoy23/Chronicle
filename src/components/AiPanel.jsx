@@ -239,6 +239,9 @@ function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
   const [recs, setRecs]     = useState(null)
   const [fresh, setFresh]   = useState(null)   // { loading, suggestions?, error? }
   const [ollamaOn, setOllamaOn] = useState(false)
+  const [genre, setGenre]   = useState('')
+  const [seedStatus, setSeedStatus] = useState('all')
+  const [genreOptions, setGenreOptions] = useState([])
 
   useEffect(() => {
     window.ai.status().then(s => setOllamaOn(!!s.ollama?.enabled)).catch(() => {})
@@ -248,6 +251,9 @@ function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
     let stale = false
     setBusy(true)
     setFresh(null)
+    // Genres are category-specific — "Shonen" means nothing once the user
+    // switches to Books — so the field resets with the results it produced.
+    setGenre('')
     window.ai.recommend({ category: catId, limit: 10 })
       .then(r => { if (!stale) setRecs(r) })
       .catch(() => { if (!stale) setRecs({ picks: [], reason: 'error' }) })
@@ -255,11 +261,49 @@ function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
     return () => { stale = true }
   }, [catId])
 
+  useEffect(() => {
+    let stale = false
+    window.ai.genres(catId)
+      .then(g => { if (!stale) setGenreOptions(g ?? []) })
+      .catch(() => { if (!stale) setGenreOptions([]) })
+    return () => { stale = true }
+  }, [catId])
+
   async function loadFresh() {
     const cat = categories.find(c => c.id === catId)
     setFresh({ loading: true })
-    const res = await window.ai.suggestNew({ category: catId, categoryLabel: cat?.label })
-    setFresh(res.ok ? { suggestions: res.suggestions } : { error: res.error })
+    const res = await window.ai.suggestNew({
+      category: catId, categoryLabel: cat?.label, genre, status: seedStatus,
+    })
+    setFresh(res.ok
+      ? {
+          suggestions: res.suggestions, seedCount: res.seedCount,
+          genreSeeded: res.genreSeeded, genre, status: seedStatus,
+        }
+      : { error: res.error })
+  }
+
+  // An error names the request that produced it ("no rated in progress
+  // entries"), so it stops being true the moment a control moves. Results are
+  // left alone: their provenance line describes what produced them, which stays
+  // true afterwards, and clearing them on every keystroke would be jarring.
+  function clearStaleError() {
+    if (fresh?.error) setFresh(null)
+  }
+
+  // What the model was actually shown. Worth saying because the genre is a
+  // soft filter: when too few titles carry it the seeds fall back to overall
+  // taste, and claiming otherwise would misdescribe where the picks came from.
+  // Reads the request's own genre and status rather than live state, so it
+  // keeps describing these results after the controls move on.
+  function freshProvenance() {
+    if (!fresh?.suggestions) return null
+    const scope = fresh.status === 'completed'   ? ' completed'
+                : fresh.status === 'in_progress' ? ' in-progress'
+                : ''
+    return fresh.genreSeeded
+      ? `From your ${fresh.seedCount} rated${scope} ${fresh.genre} titles`
+      : `From your ${fresh.seedCount} top-rated${scope} titles`
   }
 
   const emptyText = {
@@ -312,13 +356,72 @@ function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
           <h3>Fresh picks</h3>
           <span className="ai-hint-inline">New titles you don’t have yet — needs Ollama.</span>
         </div>
+
+        {/* Its own live region rather than sharing the backlog's: the two run
+            independently, and one would overwrite the other mid-announcement. */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {fresh?.loading ? 'Asking your local model for new titles…'
+            : fresh?.error ? fresh.error
+            : fresh?.suggestions ? `${fresh.suggestions.length} new suggestions` : ''}
+        </p>
         {!ollamaOn ? (
           <p className="ai-hint">Enable Ollama in Settings → AI to get brand-new suggestions from a local LLM.</p>
-        ) : fresh?.loading ? (
-          <p className="ai-hint">Asking your local model…</p>
-        ) : fresh?.error ? (
-          <p className="search-empty">{fresh.error}</p>
-        ) : fresh?.suggestions ? (
+        ) : (
+          <>
+            {/* Controls sit outside the result branches on purpose: the button
+                used to be the last arm of a ternary, so it vanished once picks
+                arrived and there was no way to change the ask and re-run. */}
+            <div className="ai-fresh-controls">
+              <label className="sr-only" htmlFor="ai-fresh-genre">Genre</label>
+              <input
+                id="ai-fresh-genre"
+                className="ai-fresh-genre"
+                list="ai-fresh-genres"
+                value={genre}
+                placeholder="Any genre"
+                onChange={e => { setGenre(e.target.value); clearStaleError() }}
+                onKeyDown={e => { if (e.key === 'Enter' && !fresh?.loading) loadFresh() }}
+              />
+              {/* Free text with suggestions rather than a select: genres are only
+                  filled in by the catalogue APIs, so a CSV-imported library has
+                  an empty vocabulary and a dropdown would be a dead control. The
+                  value only ever reaches a prompt, so unknown genres are fine. */}
+              <datalist id="ai-fresh-genres">
+                {genreOptions.map(g => <option key={g} value={g} />)}
+              </datalist>
+
+              <label className="sr-only" htmlFor="ai-fresh-status">Taste to base suggestions on</label>
+              <select
+                id="ai-fresh-status"
+                className="sort-select ai-cat-select"
+                value={seedStatus}
+                onChange={e => { setSeedStatus(e.target.value); clearStaleError() }}
+              >
+                <option value="all">Based on everything</option>
+                <option value="completed">Based on completed</option>
+                <option value="in_progress">Based on in progress</option>
+              </select>
+
+              <button className="ai-primary-btn" onClick={loadFresh} disabled={fresh?.loading}>
+                {fresh?.loading ? 'Asking…' : fresh?.suggestions ? 'Suggest again' : 'Suggest titles'}
+              </button>
+            </div>
+
+            {fresh?.error && <p className="search-empty">{fresh.error}</p>}
+            {fresh?.loading && <p className="ai-hint">Asking your local model…</p>}
+            {fresh?.suggestions && (
+              <>
+                <p className="ai-engine-note ai-fresh-note">{freshProvenance()}</p>
+                {fresh.suggestions.length === 0 && (
+                  <p className="search-empty">
+                    Nothing came back that you don’t already have{fresh.genre ? ` in ${fresh.genre}` : ''} — try again, or widen the genre.
+                  </p>
+                )}
+              </>
+            )}
+          </>
+        )}
+        {ollamaOn && fresh?.suggestions?.length > 0 && (
           <ul className="ai-fresh-list">
             {fresh.suggestions.map((s, i) => (
               <li key={`${s.title}-${i}`} className="ai-fresh-item">
@@ -338,8 +441,6 @@ function ForYouTab({ categories, activeCat, onSelect, onReveal, onAddTitle }) {
               </li>
             ))}
           </ul>
-        ) : (
-          <button className="ai-primary-btn" onClick={loadFresh}>Suggest new titles</button>
         )}
       </div>
     </>

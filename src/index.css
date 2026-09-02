@@ -3830,6 +3830,38 @@ body {
 .ai-fresh-head { align-items: baseline; display: flex; gap: 0.6rem; margin-bottom: 0.5rem; }
 .ai-fresh-head h3 { color: var(--text-strong); font-size: 0.85rem; margin: 0; }
 
+/* Wraps rather than squeezing: three controls plus a button don't fit the
+   panel's width at its narrowest, and a cramped row reads worse than two. */
+.ai-fresh-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Matches .ai-cat-select beside it so the pair reads as one control group;
+   flex: 1 with a floor keeps the field from collapsing when the row wraps. */
+.ai-fresh-genre {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  flex: 1 1 8rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  min-width: 7rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.ai-fresh-genre::placeholder { color: var(--text-mute); }
+.ai-fresh-genre:focus-visible { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); outline: none; }
+
+/* Provenance for the picks below it; no leading separator here because,
+   unlike the Ask tab's note, nothing precedes it on the line. */
+.ai-fresh-note { display: block; margin: 0 0 0.5rem; }
+.ai-fresh-note::before { content: none; }
+
 .ai-fresh-list { display: flex; flex-direction: column; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
 
 .ai-fresh-item {
