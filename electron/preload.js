@@ -3,7 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('db', {
   getEntries:   (category)       => ipcRenderer.invoke('db:getEntries',   category),
   addEntry:     (entry)          => ipcRenderer.invoke('db:addEntry',     entry),
-  addEntriesBatch: (payload)     => ipcRenderer.invoke('db:addEntriesBatch', payload),
   updateEntry:  (entry)          => ipcRenderer.invoke('db:updateEntry',  entry),
   deleteEntry:  (id)             => ipcRenderer.invoke('db:deleteEntry',  id),
   getLogs:           (entryId)   => ipcRenderer.invoke('db:getLogs',           entryId),
@@ -39,7 +38,6 @@ contextBridge.exposeInMainWorld('api', {
   searchMovies: (query) => ipcRenderer.invoke('api:searchMovies', query),
   searchTv:     (query) => ipcRenderer.invoke('api:searchTv',     query),
   searchGames:  (query) => ipcRenderer.invoke('api:searchGames',  query),
-  getSeriesMembers: (category, sourceId) => ipcRenderer.invoke('api:getSeriesMembers', category, sourceId),
 })
 
 contextBridge.exposeInMainWorld('ai', {
