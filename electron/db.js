@@ -278,6 +278,55 @@ function addSeries(category, name) {
   }
 }
 
+// Case-insensitive find-or-create, so "the expanse" lands in an existing "The Expanse".
+function findOrCreateSeries(category, name) {
+  const trimmed = (name ?? '').trim()
+  if (!trimmed) return null
+  const existing = db.prepare(
+    'SELECT id, name, category FROM series WHERE category = ? AND LOWER(name) = LOWER(?)'
+  ).get(category, trimmed)
+  return existing ?? addSeries(category, trimmed)
+}
+
+// "Add series…": insert a whole series in one transaction. Each item carries
+// its own status. Duplicates are skipped, not fatal — the caller gets a
+// per-item result so it can report "7 added, 2 already in library".
+// Either seriesId (an existing series) or seriesName (find-or-create) groups them.
+function addEntriesBatch({ category, seriesId = null, seriesName = '', source = null, entries = [] }) {
+  const run = db.transaction(() => {
+    const series = seriesId != null
+      ? db.prepare('SELECT id, name, category FROM series WHERE id = ?').get(seriesId) ?? null
+      : findOrCreateSeries(category, seriesName)
+
+    const results = entries.map(item => {
+      const entry = addEntry({
+        category,
+        title:          item.title,
+        status:         item.status,
+        rating:         item.rating ?? null,
+        notes:          item.notes ?? '',
+        cover_url:      item.cover_url ?? null,
+        series_id:      series?.id ?? null,
+        date_read:      item.date_read ?? null,
+        source:         item.source ?? source,
+        source_id:      item.source_id ?? null,
+        progress:       item.progress ?? 0,
+        progress_total: item.progress_total ?? null,
+        description:    item.description ?? null,
+        genres:         item.genres ?? null,
+        year:           item.year ?? null,
+        allowDuplicate: !!item.allowDuplicate,
+      })
+      if (entry?.error === 'DUPLICATE') {
+        return { status: 'duplicate', title: item.title, existing: entry.existing }
+      }
+      return { status: 'added', entry }
+    })
+    return { series, results }
+  })
+  return run()
+}
+
 function deleteSeries(id) {
   db.prepare('UPDATE entries SET series_id = NULL WHERE series_id = ?').run(id)
   db.prepare('DELETE FROM series WHERE id = ?').run(id)
@@ -527,7 +576,7 @@ module.exports = {
   initDb,
   getEntries, addEntry, findDuplicate, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
-  getSeries, addSeries, deleteSeries, renameSeries,
+  getSeries, addSeries, deleteSeries, renameSeries, findOrCreateSeries, addEntriesBatch,
   getEntriesWithSource, getEntriesMissingSource, setEntrySource, setEntrySeries,
   getEmbeddingIndex, upsertEmbedding, deleteEmbeddingsForOtherModels,
   pruneOrphanEmbeddings, clearEmbeddings, countEmbeddings,

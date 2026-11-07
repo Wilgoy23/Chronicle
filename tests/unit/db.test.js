@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   initDb, addEntry, findDuplicate, getEntries, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
-  getSeries, addSeries, deleteSeries, renameSeries,
+  getSeries, addSeries, deleteSeries, renameSeries, addEntriesBatch,
   exportData, importData, getAllSeries, backupTo, validateBackupFile, closeDb, getDbPath,
 } from '../../electron/db.js'
 
@@ -678,5 +678,83 @@ describe('re-watch / re-read logs', () => {
     const movieLogs = getLogsByCategory('movie')
     expect(movieLogs).toHaveLength(1)
     expect(movieLogs[0].entry_id).toBe(movie.id)
+  })
+})
+
+// ── addEntriesBatch ─────────────────────────────────────────────────────────
+
+describe('addEntriesBatch', () => {
+  beforeEach(() => initDb(':memory:'))
+
+  it('creates the series and gives each entry its own status', () => {
+    const { series, results } = addEntriesBatch({
+      category: 'book', seriesName: 'The Expanse', source: 'hardcover',
+      entries: [
+        { title: "Leviathan Wakes", status: 'completed', source_id: 1 },
+        { title: "Caliban's War",   status: 'in_progress', source_id: 2 },
+        { title: 'Abaddon’s Gate',  status: 'planned', source_id: 3 },
+      ],
+    })
+    expect(series.name).toBe('The Expanse')
+    expect(results.map(r => r.status)).toEqual(['added', 'added', 'added'])
+    const rows = getEntries('book')
+    expect(rows).toHaveLength(3)
+    const byTitle = Object.fromEntries(rows.map(r => [r.title, r]))
+    expect(byTitle['Leviathan Wakes'].status).toBe('completed')
+    expect(byTitle["Caliban's War"].status).toBe('in_progress')
+    expect(byTitle['Abaddon’s Gate'].status).toBe('planned')
+    expect(rows.every(r => r.series === 'The Expanse' && r.source === 'hardcover')).toBe(true)
+  })
+
+  it('reuses an existing series matched case-insensitively', () => {
+    const existing = addSeries('book', 'The Expanse')
+    const { series } = addEntriesBatch({
+      category: 'book', seriesName: 'the expanse',
+      entries: [{ title: 'Leviathan Wakes', status: 'completed' }],
+    })
+    expect(series.id).toBe(existing.id)
+    expect(getSeries('book')).toHaveLength(1)
+  })
+
+  it('uses an explicit seriesId over a name', () => {
+    const s = addSeries('book', 'Mine')
+    const { results } = addEntriesBatch({
+      category: 'book', seriesId: s.id, seriesName: 'Ignored',
+      entries: [{ title: 'A', status: 'planned' }],
+    })
+    expect(results[0].entry.series_id).toBe(s.id)
+    expect(getSeries('book').map(x => x.name)).toEqual(['Mine'])
+  })
+
+  it('skips duplicates without aborting the rest', () => {
+    addEntry({ category: 'book', title: 'Leviathan Wakes', source: 'hardcover', source_id: '1' })
+    const { results } = addEntriesBatch({
+      category: 'book', seriesName: 'The Expanse', source: 'hardcover',
+      entries: [
+        { title: 'Leviathan Wakes', status: 'completed', source_id: 1 },
+        { title: "Caliban's War", status: 'planned', source_id: 2 },
+      ],
+    })
+    expect(results.map(r => r.status)).toEqual(['duplicate', 'added'])
+    expect(getEntries('book')).toHaveLength(2)
+  })
+
+  it('adds no series when the name is blank', () => {
+    const { series, results } = addEntriesBatch({
+      category: 'movie', seriesName: '  ',
+      entries: [{ title: 'Alien', status: 'completed' }],
+    })
+    expect(series).toBeNull()
+    expect(results[0].entry.series_id).toBeNull()
+  })
+
+  it('rolls back everything if an insert throws', () => {
+    expect(() => addEntriesBatch({
+      category: 'book', seriesName: 'Broken',
+      // A null title violates NOT NULL on entries.title.
+      entries: [{ title: 'Fine', status: 'completed' }, { title: null, status: 'completed' }],
+    })).toThrow()
+    expect(getEntries('book')).toHaveLength(0)
+    expect(getSeries('book')).toHaveLength(0)
   })
 })
