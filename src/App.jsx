@@ -441,6 +441,11 @@ export default function App() {
     refreshSeriesList()
   }
 
+  function handleSearchAddMany(added) {
+    setEntries(prev => [...added, ...prev])
+    refreshSeriesList()
+  }
+
   // Deferred delete: remove from the UI now, commit to the DB when the toast expires.
   // Undo restores the row untouched (same id, series link, source linkage).
   function handleDelete(id) {
@@ -1022,6 +1027,7 @@ export default function App() {
             defaultSeriesId={pendingSeriesId}
             defaultQuery={prefillQuery}
             onAdd={handleSearchAdd}
+            onAddMany={handleSearchAddMany}
             onAddManually={() => { setSearchOpen(false); setManualOpen(true) }}
             onClose={() => { setSearchOpen(false); setPendingSeriesId(null); setPrefillQuery('') }}
           />

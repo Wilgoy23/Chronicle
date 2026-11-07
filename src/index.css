@@ -1938,6 +1938,76 @@ body {
   box-shadow: 0 0 12px rgba(250,204,21,0.14);
 }
 
+/* Secondary "Add series…" action next to + Add */
+.search-series-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 500;
+  padding: 0.38rem 0.7rem;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.search-series-btn:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+
+/* ── Add-series review sheet (stacked over SearchModal) ── */
+.series-sheet-backdrop { z-index: 410; }
+.series-sheet { width: min(820px, 94vw); }
+.series-sheet-heading { display: flex; flex: 1; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.series-sheet-kicker { color: var(--text-mute); font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.series-sheet-seed { color: var(--text-strong); font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.series-sheet-state { align-items: center; color: var(--text-dim); display: flex; font-size: 0.85rem; gap: 0.6rem; justify-content: center; padding: 3rem 1.5rem; }
+.series-sheet-name { min-width: 220px; }
+.series-sheet-hint { color: var(--text-mute); font-size: 0.72rem; }
+.series-sheet-setall { margin-left: auto; }
+.series-sheet-listhead {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.5rem 1.35rem 0.5rem 1.6rem;
+}
+.series-sheet-check { align-items: center; color: var(--text-dim); cursor: pointer; display: flex; font-size: 0.76rem; gap: 0.55rem; }
+.series-sheet-summary { color: #eab308; font-size: 0.76rem; font-weight: 600; }
+.series-sheet-list { overflow-y: auto; }
+.series-sheet-row { gap: 0.75rem; }
+.series-sheet-row--off .search-modal-cover,
+.series-sheet-row--off .search-modal-info { opacity: 0.45; }
+.series-sheet-rowcheck { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.series-sheet-pos { color: var(--text-mute); flex-shrink: 0; font-size: 0.72rem; font-variant-numeric: tabular-nums; text-align: right; width: 2.2rem; }
+.series-sheet-controls { align-items: center; display: flex; flex-shrink: 0; gap: 0.5rem; }
+.series-sheet-upto {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-mute);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  opacity: 0;
+  padding: 0.3rem 0.45rem;
+  transition: opacity 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.series-sheet-row:hover .series-sheet-upto,
+.series-sheet-upto:focus-visible { opacity: 1; }
+.series-sheet-upto:hover { color: var(--accent); }
+.series-sheet-footer { gap: 0.75rem; justify-content: flex-end; }
+.series-sheet-save:disabled { cursor: default; opacity: 0.45; }
+
+@media (max-width: 640px) {
+  .series-sheet-upto { opacity: 1; }
+  .series-sheet-setall { margin-left: 0; }
+  .series-sheet-name { min-width: 0; width: 100%; }
+}
+
 /* ── Add Manually modal (centered, mirrors SearchModal) ── */
 .add-modal-backdrop {
   align-items: center;

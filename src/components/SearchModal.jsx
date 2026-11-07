@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import SeriesSelect from './SeriesSelect'
 import Cover from './Cover'
+import SeriesAddSheet from './SeriesAddSheet'
 import { STATUS_LABELS } from '../App'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -43,7 +44,7 @@ async function doApiSearch(category, query) {
 
 export default function SearchModal({
   open, category, color, seriesList = [], existingEntries = [],
-  defaultSeriesId = null, defaultQuery = '', onAdd, onAddManually, onClose,
+  defaultSeriesId = null, defaultQuery = '', onAdd, onAddMany, onAddManually, onClose,
 }) {
   const [query, setQuery]         = useState('')
   const [results, setResults]     = useState([])
@@ -55,6 +56,7 @@ export default function SearchModal({
   const [addedIds, setAddedIds]   = useState(new Set())
   const [dupIds, setDupIds]       = useState(new Set()) // results flagged as duplicates, awaiting "Add anyway"
   const [addCount, setAddCount]   = useState(0)
+  const [seriesSeed, setSeriesSeed] = useState(null) // result whose whole series is being staged
   const debounceRef = useRef(null)
   const inputRef    = useRef(null)
 
@@ -75,6 +77,7 @@ export default function SearchModal({
       setAddedIds(new Set())
       setDupIds(new Set())
       setAddCount(0)
+      setSeriesSeed(null)
       setDefSeriesId(defaultSeriesId)
       setTimeout(() => inputRef.current?.focus(), 60)
     }
@@ -225,6 +228,13 @@ export default function SearchModal({
                       )}
                     </div>
                     <button
+                      className="search-series-btn"
+                      onClick={() => setSeriesSeed(r)}
+                      title="Add every installment of this series, setting a status for each"
+                    >
+                      Add series…
+                    </button>
+                    <button
                       className={`search-add-btn${added || inLibrary ? ' search-add-btn--added' : ''}${isDup ? ' search-add-btn--dup' : ''}`}
                       onClick={() => handleAdd(r, isDup)}
                       disabled={added || inLibrary}
@@ -245,6 +255,23 @@ export default function SearchModal({
           </>
         )}
       </div>
+
+      <SeriesAddSheet
+        open={!!seriesSeed}
+        category={category}
+        color={color}
+        seed={seriesSeed}
+        source={SOURCE_KEYS[category] ?? null}
+        seriesList={seriesList}
+        defaultSeriesId={defSeriesId}
+        existingEntries={existingEntries}
+        onAdded={entries => {
+          setAddCount(c => c + entries.length)
+          if (onAddMany) onAddMany(entries)
+          else entries.forEach(onAdd)
+        }}
+        onClose={() => setSeriesSeed(null)}
+      />
     </div>
   )
 }
