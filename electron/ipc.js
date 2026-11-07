@@ -2,9 +2,10 @@ const { ipcMain } = require('electron')
 const {
   getEntries, addEntry, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
-  getSeries, addSeries, deleteSeries, renameSeries,
+  getSeries, addSeries, deleteSeries, renameSeries, addEntriesBatch,
 } = require('./db')
 const { searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames } = require('./api')
+const { getSeriesMembers } = require('./seriesLookup')
 const { markLibraryDirty } = require('./ai/aiService')
 
 // Text-affecting mutations schedule an incremental AI re-index (debounced).
@@ -20,6 +21,7 @@ function registerHandlers(readSettings) {
   ipcMain.handle('db:getEntries',    (_e, category) => getEntries(category))
   ipcMain.handle('db:addEntry',      (_e, entry)    => touching(addEntry)(entry))
   ipcMain.handle('db:updateEntry',   (_e, entry)    => touching(updateEntry)(entry))
+  ipcMain.handle('db:addEntriesBatch', (_e, payload) => touching(addEntriesBatch)(payload))
   ipcMain.handle('db:deleteEntry',   (_e, id)       => touching(deleteEntry)(id))
   ipcMain.handle('db:getLogs',          (_e, entryId)  => getLogs(entryId))
   ipcMain.handle('db:getLogsByCategory', (_e, category) => getLogsByCategory(category))
@@ -47,6 +49,10 @@ function registerHandlers(readSettings) {
   ipcMain.handle('api:searchGames',  async (_e, query) => {
     const { rawgKey } = readSettings()
     return searchGames(query, rawgKey)
+  })
+  ipcMain.handle('api:getSeriesMembers', (_e, category, sourceId) => {
+    const { hardcoverToken, tmdbKey, rawgKey } = readSettings()
+    return getSeriesMembers(category, sourceId, { hardcoverToken, tmdbKey, rawgKey })
   })
 }
 
