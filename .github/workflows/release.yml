@@ -13,6 +13,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      # onnxruntime-node's postinstall fetches CUDA binaries on Linux x64 and
+      # 404s on runners; embeddings run on CPU, so skip the GPU download.
+      ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
     steps:
       - uses: actions/checkout@v4
 
