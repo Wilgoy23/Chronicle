@@ -10,6 +10,7 @@
     "postinstall": "electron-builder install-app-deps",
     "test": "npm rebuild better-sqlite3 && vitest run",
     "test:watch": "npm rebuild better-sqlite3 && vitest",
+    "test:coverage": "npm rebuild better-sqlite3 && vitest run --coverage",
     "build:renderer": "vite build",
     "test:e2e": "playwright test"
   },
@@ -21,6 +22,7 @@
     "@electron/rebuild": "^3.6.0",
     "@playwright/test": "^1.60.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/coverage-v8": "^4.1.6",
     "concurrently": "^8.2.2",
     "electron": "^29.1.4",
     "electron-builder": "^24.13.3",

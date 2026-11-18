@@ -29,3 +29,4 @@ Thumbs.db
 # Test artifacts
 test-results/
 playwright-report/
+coverage/
