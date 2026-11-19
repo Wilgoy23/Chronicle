@@ -64,6 +64,32 @@ function initDb(dbPath) {
     )
   `)
 
+  // Dated activity: one row per progress change and/or status change, written
+  // by updateEntry. Powers the edit panel's history ("Nov 3 · pages 112 → 148")
+  // and Up Next's "most recently touched" ordering. `status` is the new status
+  // when it changed in that update, else null; `delta` is the progress change.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id   INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+      at         TEXT NOT NULL DEFAULT (datetime('now')),
+      progress   INTEGER,
+      delta      INTEGER NOT NULL DEFAULT 0,
+      status     TEXT
+    )
+  `)
+  db.exec('CREATE INDEX IF NOT EXISTS activity_entry ON activity(entry_id, at)')
+
+  // Small TTL cache for remote lookups (episode lists) — keeps Up Next and the
+  // episode grid from refetching on every open, and serves stale data offline.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS media_cache (
+      key        TEXT PRIMARY KEY,
+      json       TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL
+    )
+  `)
+
   // Detected new releases for franchises in the library
   db.exec(`
     CREATE TABLE IF NOT EXISTS releases (
@@ -127,7 +153,8 @@ const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
          e.date_read, e.created_at, e.series_id, e.source, e.source_id,
          e.progress, e.progress_total, e.description, e.genres, e.year, s.name AS series,
-         (SELECT COUNT(*) FROM logs l WHERE l.entry_id = e.id) AS log_count
+         (SELECT COUNT(*) FROM logs l WHERE l.entry_id = e.id) AS log_count,
+         COALESCE((SELECT MAX(a.at) FROM activity a WHERE a.entry_id = e.id), e.created_at) AS last_activity
   FROM entries e
   LEFT JOIN series s ON e.series_id = s.id
 `
@@ -210,7 +237,7 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
 
 function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total, genres, year }) {
   // Preserve progress/genres/year when a caller omits them (e.g. drag-to-series only touches series_id).
-  const cur = db.prepare('SELECT progress, progress_total, genres, year FROM entries WHERE id = ?').get(id) || {}
+  const cur = db.prepare('SELECT status, progress, progress_total, genres, year FROM entries WHERE id = ?').get(id) || {}
   const nextProgress = progress       === undefined ? (cur.progress ?? 0)          : (progress ?? 0)
   const nextTotal    = progress_total === undefined ? (cur.progress_total ?? null) : (progress_total ?? null)
   const nextGenres   = genres         === undefined ? (cur.genres ?? null)         : normalizeGenres(genres)
@@ -222,13 +249,48 @@ function updateEntry({ id, title, status, rating, notes, series_id, date_read, p
     WHERE id = ?
   `).run(title, status, rating ?? null, notes ?? '', series_id ?? null, date_read ?? null,
          nextProgress, nextTotal, nextGenres, nextYear, id)
+
+  // Record dated activity when progress or status actually moved.
+  const prevProgress = cur.progress ?? 0
+  const statusChanged = cur.status != null && status != null && status !== cur.status
+  if (nextProgress !== prevProgress || statusChanged) {
+    db.prepare('INSERT INTO activity (entry_id, progress, delta, status) VALUES (?, ?, ?, ?)')
+      .run(id, nextProgress, nextProgress - prevProgress, statusChanged ? status : null)
+  }
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(id)
+}
+
+// Newest first. `at` is UTC ("YYYY-MM-DD HH:MM:SS"), as SQLite's datetime('now').
+function getActivity(entryId) {
+  return db.prepare(
+    'SELECT id, entry_id, at, progress, delta, status FROM activity WHERE entry_id = ? ORDER BY at DESC, id DESC'
+  ).all(entryId)
+}
+
+// ── Remote lookup cache ──────────────────────────────────────────
+
+// Returns { value, fresh } or null. Stale values are still returned (fresh:
+// false) so callers can fall back to them when the network is unavailable.
+function cacheGet(key, maxAgeMs) {
+  const row = db.prepare('SELECT json, fetched_at FROM media_cache WHERE key = ?').get(key)
+  if (!row) return null
+  try {
+    return { value: JSON.parse(row.json), fresh: Date.now() - row.fetched_at < maxAgeMs }
+  } catch {
+    return null
+  }
+}
+
+function cacheSet(key, value) {
+  db.prepare('INSERT OR REPLACE INTO media_cache (key, json, fetched_at) VALUES (?, ?, ?)')
+    .run(key, JSON.stringify(value), Date.now())
 }
 
 function deleteEntry(id) {
   // Cascade logs explicitly — the ON DELETE CASCADE FK only fires when
   // PRAGMA foreign_keys is on, which we don't rely on elsewhere.
   db.prepare('DELETE FROM logs WHERE entry_id = ?').run(id)
+  db.prepare('DELETE FROM activity WHERE entry_id = ?').run(id)
   db.prepare('DELETE FROM embeddings WHERE entry_id = ?').run(id)
   db.prepare('DELETE FROM entries WHERE id = ?').run(id)
   return { success: true }
@@ -484,6 +546,7 @@ function exportData() {
     entries:    db.prepare(`${ENTRY_SELECT} ORDER BY e.id`).all(),
     series:     getAllSeries(),
     logs:       db.prepare('SELECT id, entry_id, date, rating, notes FROM logs ORDER BY entry_id, id').all(),
+    activity:   db.prepare('SELECT id, entry_id, at, progress, delta, status FROM activity ORDER BY entry_id, at, id').all(),
   }
 }
 
@@ -502,6 +565,9 @@ function importData(data, { mode = 'merge' } = {}) {
   const insertSeries = db.prepare('INSERT OR IGNORE INTO series (category, name) VALUES (?, ?)')
   const findSeries   = db.prepare('SELECT id FROM series WHERE category = ? AND name = ?')
   const findDup      = db.prepare('SELECT id FROM entries WHERE category = ? AND LOWER(title) = LOWER(?)')
+  // Imports that carry a catalogue id (AniList) also dedupe on it, since the
+  // same show can be titled differently (English vs romaji) across sources.
+  const findDupBySource = db.prepare('SELECT id FROM entries WHERE category = ? AND source = ? AND source_id = ?')
   const insertEntry  = db.prepare(`
     INSERT INTO entries
       (category, title, status, rating, notes, cover_url, series_id, date_read,
@@ -512,6 +578,9 @@ function importData(data, { mode = 'merge' } = {}) {
   `)
   const insertLog = db.prepare(
     'INSERT INTO logs (entry_id, date, rating, notes) VALUES (?, ?, ?, ?)'
+  )
+  const insertActivity = db.prepare(
+    'INSERT INTO activity (entry_id, at, progress, delta, status) VALUES (?, ?, ?, ?, ?)'
   )
 
   const seriesBefore = db.prepare('SELECT COUNT(*) AS n FROM series').get().n
@@ -526,7 +595,11 @@ function importData(data, { mode = 'merge' } = {}) {
 
     for (const e of data.entries) {
       if (!e || !e.category || !e.title) { skipped++; continue }
-      if (mode === 'merge' && findDup.get(e.category, e.title)) { skipped++; continue }
+      if (mode === 'merge') {
+        const sourceDup = e.source && e.source_id != null && e.source_id !== ''
+          && findDupBySource.get(e.category, e.source, String(e.source_id))
+        if (sourceDup || findDup.get(e.category, e.title)) { skipped++; continue }
+      }
 
       // Resolve the series by name within the entry's category.
       let series_id = null
@@ -565,6 +638,14 @@ function importData(data, { mode = 'merge' } = {}) {
       insertLog.run(newEntryId, l.date ?? null, l.rating ?? null, l.notes ?? '')
       logsImported++
     }
+
+    // Activity history (7.2) — same remap-or-drop rule as logs; absent in older exports.
+    for (const a of (Array.isArray(data.activity) ? data.activity : [])) {
+      if (!a || a.entry_id == null || !a.at) continue
+      const newEntryId = idMap.get(a.entry_id)
+      if (newEntryId == null) continue
+      insertActivity.run(newEntryId, a.at, a.progress ?? null, a.delta ?? 0, a.status ?? null)
+    }
   })
   run()
 
@@ -575,6 +656,7 @@ function importData(data, { mode = 'merge' } = {}) {
 module.exports = {
   initDb,
   getEntries, addEntry, findDuplicate, updateEntry, deleteEntry,
+  getActivity, cacheGet, cacheSet,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries, findOrCreateSeries, addEntriesBatch,
   getEntriesWithSource, getEntriesMissingSource, setEntrySource, setEntrySeries,

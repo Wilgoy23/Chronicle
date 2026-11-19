@@ -3,8 +3,11 @@ const {
   getEntries, addEntry, updateEntry, deleteEntry,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries, addEntriesBatch,
+  getActivity, cacheGet, cacheSet,
 } = require('./db')
-const { searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames } = require('./api')
+const { getEpisodes } = require('./episodes')
+const catalog = require('./catalog')
+const { effectiveKeys } = require('./keys')
 const { getSeriesMembers } = require('./seriesLookup')
 const { markLibraryDirty } = require('./ai/aiService')
 
@@ -27,32 +30,31 @@ function registerHandlers(readSettings) {
   ipcMain.handle('db:getLogsByCategory', (_e, category) => getLogsByCategory(category))
   ipcMain.handle('db:addLog',           (_e, log)      => addLog(log))
   ipcMain.handle('db:deleteLog',        (_e, id)       => deleteLog(id))
+  ipcMain.handle('db:getActivity',      (_e, entryId)  => getActivity(entryId))
   ipcMain.handle('db:getSeries',     (_e, category) => getSeries(category))
   ipcMain.handle('db:addSeries',     (_e, category, name) => addSeries(category, name))
   ipcMain.handle('db:deleteSeries',  (_e, id)       => touching(deleteSeries)(id))
   ipcMain.handle('db:renameSeries',  (_e, id, name) => touching(renameSeries)(id, name))
 
-  ipcMain.handle('api:searchBooks',  async (_e, query) => {
-    const { hardcoverToken } = readSettings()
-    return searchBooks(query, hardcoverToken)
-  })
-  ipcMain.handle('api:searchAnime',  (_e, query) => searchAnime(query))
-  ipcMain.handle('api:searchManga',  (_e, query) => searchManga(query))
-  ipcMain.handle('api:searchMovies', async (_e, query) => {
-    const { tmdbKey } = readSettings()
-    return searchMovies(query, tmdbKey)
-  })
-  ipcMain.handle('api:searchTv',     async (_e, query) => {
-    const { tmdbKey } = readSettings()
-    return searchTv(query, tmdbKey)
-  })
-  ipcMain.handle('api:searchGames',  async (_e, query) => {
-    const { rawgKey } = readSettings()
-    return searchGames(query, rawgKey)
-  })
-  ipcMain.handle('api:getSeriesMembers', (_e, category, sourceId) => {
-    const { hardcoverToken, tmdbKey, rawgKey } = readSettings()
-    return getSeriesMembers(category, sourceId, { hardcoverToken, tmdbKey, rawgKey })
+  // One channel per category (kept for the renderer + e2e stubs); each routes
+  // through the catalog, which picks the keyed source or its keyless fallback.
+  const searchChannels = {
+    'api:searchBooks': 'book', 'api:searchAnime': 'anime', 'api:searchManga': 'manga',
+    'api:searchMovies': 'movie', 'api:searchTv': 'tv', 'api:searchGames': 'game',
+  }
+  for (const [channel, category] of Object.entries(searchChannels)) {
+    ipcMain.handle(channel, (_e, query) => catalog.search(category, query, readSettings()))
+  }
+  ipcMain.handle('api:sources', () => catalog.sourcesSummary(readSettings()))
+  // Only the identity fields cross IPC — the renderer passes whole entries.
+  ipcMain.handle('api:getEpisodes', (_e, entry, opts) => getEpisodes(
+    { category: entry?.category, source: entry?.source, source_id: entry?.source_id },
+    readSettings(),
+    { get: cacheGet, set: cacheSet },
+    opts ?? {},
+  ))
+  ipcMain.handle('api:getSeriesMembers', (_e, category, sourceId, source) => {
+    return getSeriesMembers(category, sourceId, effectiveKeys(readSettings()), source ?? null)
   })
 }
 

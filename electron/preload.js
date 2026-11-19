@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('db', {
   getLogsByCategory: (category)  => ipcRenderer.invoke('db:getLogsByCategory', category),
   addLog:            (log)       => ipcRenderer.invoke('db:addLog',            log),
   deleteLog:         (id)        => ipcRenderer.invoke('db:deleteLog',         id),
+  getActivity:       (entryId)   => ipcRenderer.invoke('db:getActivity',       entryId),
   getSeries:    (category)       => ipcRenderer.invoke('db:getSeries',    category),
   addSeries:    (category, name) => ipcRenderer.invoke('db:addSeries',    category, name),
   deleteSeries: (id)             => ipcRenderer.invoke('db:deleteSeries', id),
@@ -28,6 +29,8 @@ contextBridge.exposeInMainWorld('data', {
   importGoodreads: () => ipcRenderer.invoke('data:importGoodreads'),
   importMal:  () => ipcRenderer.invoke('data:importMal'),
   importLetterboxd: () => ipcRenderer.invoke('data:importLetterboxd'),
+  importStoryGraph: () => ipcRenderer.invoke('data:importStoryGraph'),
+  importAniList: (username) => ipcRenderer.invoke('data:importAniList', username),
   backup:     () => ipcRenderer.invoke('data:backup'),
   restore:    () => ipcRenderer.invoke('data:restore'),
 })
@@ -39,7 +42,9 @@ contextBridge.exposeInMainWorld('api', {
   searchMovies: (query) => ipcRenderer.invoke('api:searchMovies', query),
   searchTv:     (query) => ipcRenderer.invoke('api:searchTv',     query),
   searchGames:  (query) => ipcRenderer.invoke('api:searchGames',  query),
-  getSeriesMembers: (category, sourceId) => ipcRenderer.invoke('api:getSeriesMembers', category, sourceId),
+  getSeriesMembers: (category, sourceId, source) => ipcRenderer.invoke('api:getSeriesMembers', category, sourceId, source),
+  sources:      ()      => ipcRenderer.invoke('api:sources'),
+  getEpisodes:  (entry, opts) => ipcRenderer.invoke('api:getEpisodes', entry, opts),
 })
 
 contextBridge.exposeInMainWorld('ai', {
@@ -47,6 +52,7 @@ contextBridge.exposeInMainWorld('ai', {
   rebuildIndex: ()             => ipcRenderer.invoke('ai:rebuildIndex'),
   search:       (query, opts)  => ipcRenderer.invoke('ai:search', query, opts),
   ask:          (query, opts)  => ipcRenderer.invoke('ai:ask', query, opts),
+  warm:         ()             => ipcRenderer.invoke('ai:warm'),
   recommend:    (opts)         => ipcRenderer.invoke('ai:recommend', opts),
   suggestNew:   (opts)         => ipcRenderer.invoke('ai:suggestNew', opts),
   genres:       (category)     => ipcRenderer.invoke('ai:genres', category),
