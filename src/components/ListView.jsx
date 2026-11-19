@@ -35,15 +35,16 @@ function formatDate(iso) {
 
 // Dense, sortable rows for large collections (5.5). Flat list — series appears
 // as a column rather than a group, so the current sort order reads top-to-bottom.
-export default function ListView({ entries, color, onDelete, onEdit, onIncrement }) {
+// hideSeries drops that column when every row is from the same (open) series.
+export default function ListView({ entries, color, onDelete, onEdit, onIncrement, hideSeries = false }) {
   if (entries.length === 0) return null
 
   return (
-    <div className="list-view" style={{ '--accent': color }}>
+    <div className={`list-view ${hideSeries ? 'list-view--no-series' : ''}`} style={{ '--accent': color }}>
       <div className="list-head">
         <span className="list-col-cover" />
         <span className="list-col-title">Title</span>
-        <span className="list-col-series">Series</span>
+        {!hideSeries && <span className="list-col-series">Series</span>}
         <span className="list-col-status">Status</span>
         <span className="list-col-rating">Rating</span>
         <span className="list-col-date">Date</span>
@@ -72,7 +73,7 @@ export default function ListView({ entries, color, onDelete, onEdit, onIncrement
               )}
             </div>
 
-            <span className="list-series">{entry.series || ''}</span>
+            {!hideSeries && <span className="list-series">{entry.series || ''}</span>}
 
             <span className="list-status">
               <span className="list-status-dot" style={{ background: STATUS_COLORS[entry.status] }} />

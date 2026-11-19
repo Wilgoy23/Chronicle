@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import AddEntryPanel from './components/AddEntryPanel'
 import ConfirmDialog from './components/ConfirmDialog'
 import EditEntryPanel from './components/EditEntryPanel'
@@ -7,7 +7,7 @@ import ListView from './components/ListView'
 import SearchModal from './components/SearchModal'
 import GlobalSearchModal from './components/GlobalSearchModal'
 import AiPanel from './components/AiPanel'
-import SeriesGroup from './components/SeriesGroup'
+import SeriesGroup, { NewSeriesTile, SeriesProgressBar, seriesProgress } from './components/SeriesGroup'
 import TimelineView from './components/TimelineView'
 import SettingsPage from './components/SettingsPage'
 import ReleasesPanel from './components/ReleasesPanel'
@@ -59,6 +59,7 @@ export const ICONS = {
   pencil:   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>,
   bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  globe:    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
   sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
   upnext:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>,
   import:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
@@ -132,6 +133,14 @@ export function categoryVerbs(category) {
   return CATEGORY_VERBS[category] ?? { active: 'In Progress', past: 'Finished' }
 }
 
+// Status filter options for the library toolbar ('in_progress' is relabelled per category).
+const STATUS_FILTERS = [
+  { key: 'all',         label: 'All statuses' },
+  { key: 'completed',   label: 'Completed',   color: '#4ade80' },
+  { key: 'in_progress', label: 'In Progress', color: '#facc15' },
+  { key: 'planned',     label: 'Planned',     color: '#94a3b8' },
+]
+
 export const SORT_OPTIONS = [
   { key: 'recent', label: 'Recently added' },
   { key: 'title',  label: 'Title A–Z' },
@@ -177,6 +186,17 @@ function groupEntries(entries, allSeries = []) {
   return [...seriesItems, ...soloItems]
 }
 
+// Overview layout: series tiles, then the "new series" tile, then standalone
+// entries under their own label (entry cards are taller than series tiles, so
+// they start a fresh row rather than stretching a row of tiles).
+function layoutOverview(items, { newSeriesTile = false } = {}) {
+  const out = items.filter(i => i.type === 'series')
+  const solos = items.filter(i => i.type === 'solo')
+  if (newSeriesTile) out.push({ type: 'new-series' })
+  if (solos.length > 0 && out.length > 0) out.push({ type: 'label', text: 'Standalone' })
+  return [...out, ...solos]
+}
+
 const NEUTRAL_ACCENT = '#94a3b8'
 
 // Pages that show the full navigation rail (categories + daily views).
@@ -206,11 +226,11 @@ export default function App() {
   const [tagFilter, setTagFilter]       = useState(null) // genre/tag string | null
   const [search, setSearch]           = useState('')
   const searchRef                     = useRef(null)
+  const gridRef                       = useRef(null)
+  const overviewScrollRef             = useRef({ cat: null, top: 0 }) // grid scroll to restore when leaving a series
   const [sort, setSort]               = useState('recent')
   const [pendingSeriesId, setPendingSeriesId] = useState(null)
   const [prefillQuery, setPrefillQuery]       = useState('') // seeds SearchModal from an AI suggestion
-  const [newSeriesName, setNewSeriesName]     = useState('')
-  const [showNewSeriesInput, setShowNewSeriesInput] = useState(false)
   const [sidebarOpen, setSidebarOpen]         = useState(false)
   const [seriesToDelete, setSeriesToDelete]   = useState(null) // { id, name }
   const [renamingSeriesId, setRenamingSeriesId] = useState(null) // series_id being renamed | null
@@ -319,8 +339,6 @@ export default function App() {
       setTagFilter(null)
       setSearch('')
       setSort(loadSort(activeCat.id))
-      setShowNewSeriesInput(false)
-      setNewSeriesName('')
       window.db.getEntries(activeCat.id).then(setEntries)
       window.db.getSeries(activeCat.id).then(setSeriesList)
       refreshLogs()
@@ -484,9 +502,52 @@ export default function App() {
     setCategory(catId)
   }
 
-  function toggleActiveSeriesFilter(seriesId) {
-    setSeriesFilter(prev => prev === seriesId ? null : seriesId)
-    setSidebarOpen(false)
+  function openSeries(seriesId) {
+    setSeriesFilter(seriesId)
+  }
+
+  // Opening a series starts at its top; going back returns to where the overview was.
+  useLayoutEffect(() => {
+    const grid = gridRef.current
+    if (!grid) return
+    const saved = overviewScrollRef.current
+    grid.scrollTop = seriesFilter == null && saved.cat === category ? saved.top : 0
+  }, [seriesFilter, category])
+
+  // Header data for the series currently opened from the grid or sidebar.
+  const openSeriesInfo = (() => {
+    if (seriesFilter == null) return null
+    const s = seriesList.find(x => x.id === seriesFilter)
+    if (!s) return null
+    return { name: s.name, progress: seriesProgress(entries.filter(e => e.series_id === seriesFilter)) }
+  })()
+
+  // Every entry of each series (ignoring filters), so tiles show whole-series progress.
+  const entriesBySeries = new Map()
+  for (const e of sortEntries(entries, sort)) {
+    if (e.series_id == null) continue
+    if (!entriesBySeries.has(e.series_id)) entriesBySeries.set(e.series_id, [])
+    entriesBySeries.get(e.series_id).push(e)
+  }
+
+  // What the grid shows: one series' entries, a flat tag filter, search results
+  // (series whose name matches become tiles), or the series/standalone overview.
+  let gridItems
+  if (seriesFilter != null || tagFilter != null) {
+    gridItems = filteredEntries.map(e => ({ type: 'solo', entry: e }))
+  } else if (query) {
+    const matched = seriesList.filter(s => s.name.toLowerCase().includes(query))
+    const matchedIds = new Set(matched.map(s => s.id))
+    gridItems = layoutOverview([
+      ...matched.map(s => ({ type: 'series', id: s.id, name: s.name })),
+      ...filteredEntries.filter(e => !matchedIds.has(e.series_id)).map(e => ({ type: 'solo', entry: e })),
+    ])
+  } else {
+    // Only truly empty series show as empty tiles — not ones the status filter emptied.
+    const emptySeries = seriesList.filter(s => !entriesBySeries.has(s.id))
+    gridItems = layoutOverview(groupEntries(filteredEntries, emptySeries), {
+      newSeriesTile: entries.length > 0 || seriesList.length > 0,
+    })
   }
 
   function handleAdded(entry) {
@@ -603,8 +664,6 @@ export default function App() {
     setPendingSeriesId(created.id)
     if (categoryHasSearch(activeCat)) setSearchOpen(true)
     else setManualOpen(true)
-    setShowNewSeriesInput(false)
-    setNewSeriesName('')
   }
 
   function handleDeleteSeries(seriesId, name) {
@@ -754,96 +813,6 @@ export default function App() {
           </div>
         </aside>
 
-        {page === 'collection' && (
-          <aside className="series-sidebar" style={{ '--accent': activeCat?.color }}>
-            <div className="series-sidebar-header">
-              <span className="series-sidebar-icon">{catGlyph(activeCat)}</span>
-              <span className="series-sidebar-title">{activeCat?.label}</span>
-            </div>
-
-            <div className="series-sidebar-list">
-              <button
-                className={`sidebar-series-item ${seriesFilter == null ? 'active' : ''}`}
-                onClick={() => { setSeriesFilter(null); setSidebarOpen(false) }}
-              >
-                <span className="sidebar-series-dot" />
-                <span className="sidebar-series-name">All {activeCat?.label}</span>
-                {entries.length > 0 && <span className="sidebar-series-count">{entries.length}</span>}
-              </button>
-
-              {seriesList.map(s => {
-                const count = entries.filter(e => e.series_id === s.id).length
-                if (renamingSeriesId === s.id) {
-                  return (
-                    <div className="sidebar-series-input-row" key={s.id}>
-                      <input
-                        autoFocus
-                        className="sidebar-series-input"
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onBlur={() => commitRenameSeries(s.id)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') commitRenameSeries(s.id)
-                          if (e.key === 'Escape') cancelRenameSeries()
-                        }}
-                      />
-                    </div>
-                  )
-                }
-                return (
-                  <div className="sidebar-series-row" key={s.id}>
-                    <button
-                      className={`sidebar-series-item ${seriesFilter === s.id ? 'active' : ''}`}
-                      onClick={() => toggleActiveSeriesFilter(s.id)}
-                      onDoubleClick={() => startRenameSeries(s)}
-                    >
-                      <span className="sidebar-series-dot" />
-                      <span className="sidebar-series-name">{s.name}</span>
-                      <span className="sidebar-series-count">{count}</span>
-                    </button>
-                    <button
-                      className="sidebar-series-rename"
-                      onClick={() => startRenameSeries(s)}
-                      title={`Rename ${s.name}`}
-                    >
-                      {ICONS.pencil}
-                    </button>
-                    <button
-                      className="sidebar-series-delete"
-                      onClick={() => handleDeleteSeries(s.id, s.name)}
-                      title={`Delete ${s.name}`}
-                    >
-                      {ICONS.trash}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="series-sidebar-footer">
-              {showNewSeriesInput ? (
-                <div className="sidebar-series-input-row">
-                  <input
-                    autoFocus
-                    className="sidebar-series-input"
-                    placeholder="Series name…"
-                    value={newSeriesName}
-                    onChange={e => setNewSeriesName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleNewSeries(newSeriesName)
-                      if (e.key === 'Escape') { setShowNewSeriesInput(false); setNewSeriesName('') }
-                    }}
-                  />
-                  <button className="sidebar-series-confirm-btn" onClick={() => handleNewSeries(newSeriesName)}>+</button>
-                </div>
-              ) : (
-                <button className="sidebar-new-series-btn" onClick={() => setShowNewSeriesInput(true)}>
-                  + New series
-                </button>
-              )}
-            </div>
-          </aside>
-        )}
       </div>
 
       {/* Main */}
@@ -975,7 +944,8 @@ export default function App() {
         </main>
       ) : (
         <main className="main">
-          <header className="topbar" style={{ '--accent': activeCat?.color }}>
+          {/* One toolbar row: title · search · view options · tools · primary action */}
+          <header className="topbar topbar--library" style={{ '--accent': activeCat?.color }}>
             <div className="topbar-title">
               <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
                 {ICONS.menu}
@@ -984,18 +954,61 @@ export default function App() {
               <h1>{activeCat?.label}</h1>
               <span className="topbar-count">{entries.length}</span>
             </div>
-            <div className="topbar-actions">
+
+            <div className="library-search">
+              <span className="library-search-icon">{ICONS.search}</span>
+              <input
+                ref={searchRef}
+                className="library-search-input"
+                aria-label={`Search ${activeCat?.label.toLowerCase()}`}
+                placeholder={`Search ${activeCat?.label.toLowerCase()}…`}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setSearch('') }}
+              />
+              {search ? (
+                <button className="library-search-clear" onClick={() => setSearch('')} title="Clear search" aria-label="Clear search">✕</button>
+              ) : (
+                <kbd className="library-search-kbd" aria-hidden="true">Ctrl K</kbd>
+              )}
+              <span className="library-search-sep" aria-hidden="true" />
               <button
-                className="bell-btn"
-                onClick={openReleases}
-                title="New releases"
-                aria-label="New releases"
+                className="library-search-global"
+                onClick={() => setGlobalSearchOpen(true)}
+                title="Search every category (Ctrl+Shift+K)"
               >
-                {ICONS.bell}
-                {unseenForCat > 0 && (
-                  <span className="bell-badge">{unseenForCat > 9 ? '9+' : unseenForCat}</span>
-                )}
+                {ICONS.globe}<span className="library-search-global-label">All categories</span>
               </button>
+            </div>
+
+            {tagFilter && (
+              <button
+                className="tag-filter-active"
+                onClick={() => setTagFilter(null)}
+                title="Clear tag filter"
+              >
+                <span className="tag-filter-hash">#</span>
+                {tagFilter}
+                <span className="tag-filter-x">✕</span>
+              </button>
+            )}
+
+            <div className="topbar-actions">
+              <div className={`sort-control status-control ${statusFilter !== 'all' ? 'is-filtered' : ''}`} title="Filter by status">
+                <span className="filter-dot" style={{ background: STATUS_FILTERS.find(f => f.key === statusFilter)?.color ?? 'var(--text-dim)' }} />
+                <select
+                  className="sort-select"
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  aria-label="Filter by status"
+                >
+                  {STATUS_FILTERS.map(f => (
+                    <option key={f.key} value={f.key}>
+                      {f.key === 'in_progress' ? categoryVerbs(activeCat?.id).active : f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {view !== 'timeline' && (
                 <div className="sort-control" title="Sort">
                   <span className="sort-icon">{ICONS.sort}</span>
@@ -1016,89 +1029,108 @@ export default function App() {
                   className={`view-btn ${view === 'grid' ? 'active' : ''}`}
                   onClick={() => setView('grid')}
                   title="Grid view"
+                  aria-label="Grid view"
                 >{ICONS.grid}</button>
                 <button
                   className={`view-btn ${view === 'list' ? 'active' : ''}`}
                   onClick={() => setView('list')}
                   title="Compact list view"
+                  aria-label="Compact list view"
                 >{ICONS.list}</button>
                 <button
                   className={`view-btn ${view === 'timeline' ? 'active' : ''}`}
                   onClick={() => setView('timeline')}
                   title="Timeline view"
+                  aria-label="Timeline view"
                 >{ICONS.timeline}</button>
               </div>
+
+              <span className="topbar-sep" aria-hidden="true" />
+
+              <button
+                className="tool-btn ai-open-btn"
+                aria-label="Ask AI"
+                onClick={() => setAiOpen(true)}
+                title="Ask your library — semantic search, recommendations, series detection"
+              >
+                {ICONS.sparkle}<span className="tool-btn-label">Ask AI</span>
+              </button>
+              <button
+                className="bell-btn"
+                onClick={openReleases}
+                title="New releases"
+                aria-label="New releases"
+              >
+                {ICONS.bell}
+                {unseenForCat > 0 && (
+                  <span className="bell-badge">{unseenForCat > 9 ? '9+' : unseenForCat}</span>
+                )}
+              </button>
               <button
                 className="add-btn"
                 style={{ '--accent': activeCat?.color }}
                 onClick={openAdd}
+                title="Add entry (Ctrl+N)"
+                aria-label="Add Entry"
               >
-                {ICONS.plus}&nbsp; Add Entry
+                {ICONS.plus}<span className="add-btn-label">Add Entry</span>
               </button>
             </div>
           </header>
 
-          {/* Filter strip */}
-          <div className="filter-strip">
-            {[
-              { key: 'all',         label: 'All' },
-              { key: 'completed',   label: 'Completed',   color: '#4ade80' },
-              { key: 'in_progress', label: 'In Progress', color: '#facc15' },
-              { key: 'planned',     label: 'Planned',     color: '#94a3b8' },
-            ].map(f => (
+          {openSeriesInfo && (
+            <div className="series-detail-bar">
               <button
-                key={f.key}
-                className={`filter-chip ${statusFilter === f.key ? 'active' : ''}`}
-                onClick={() => setStatusFilter(f.key)}
+                className="series-detail-back"
+                onClick={() => { cancelRenameSeries(); setSeriesFilter(null) }}
+                title={`Back to all ${activeCat?.label.toLowerCase()}`}
               >
-                {f.color && <span className="filter-dot" style={{ background: f.color }} />}
-                {f.label}
+                {ICONS.back}
+                <span>All {activeCat?.label}</span>
               </button>
-            ))}
-
-            <div className="filter-search">
-              <span className="filter-search-icon">{ICONS.search}</span>
-              <input
-                ref={searchRef}
-                className="filter-search-input"
-                placeholder={`Search ${activeCat?.label.toLowerCase()}…`}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Escape') setSearch('') }}
-              />
-              {search && (
-                <button className="filter-search-clear" onClick={() => setSearch('')} title="Clear search">✕</button>
-              )}
+              <div className="series-detail-info">
+                {renamingSeriesId === seriesFilter ? (
+                  <input
+                    autoFocus
+                    className="series-detail-rename"
+                    aria-label="Series name"
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onBlur={() => commitRenameSeries(seriesFilter)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitRenameSeries(seriesFilter)
+                      if (e.key === 'Escape') cancelRenameSeries()
+                    }}
+                  />
+                ) : (
+                  <h2 className="series-detail-name" onDoubleClick={() => startRenameSeries({ id: seriesFilter, name: openSeriesInfo.name })}>
+                    {openSeriesInfo.name}
+                  </h2>
+                )}
+                <div className="series-detail-meta">
+                  <SeriesProgressBar {...openSeriesInfo.progress} />
+                  <span>
+                    {openSeriesInfo.progress.done}/{openSeriesInfo.progress.total} {categoryVerbs(activeCat?.id).past.toLowerCase()}
+                    {openSeriesInfo.progress.active > 0 && ` · ${openSeriesInfo.progress.active} ${categoryVerbs(activeCat?.id).active.toLowerCase()}`}
+                  </span>
+                </div>
+              </div>
+              <div className="series-detail-actions">
+                <button
+                  className="series-detail-action"
+                  onClick={() => startRenameSeries({ id: seriesFilter, name: openSeriesInfo.name })}
+                  title="Rename series"
+                  aria-label="Rename series"
+                >{ICONS.pencil}</button>
+                <button
+                  className="series-detail-action series-detail-action--danger"
+                  onClick={() => handleDeleteSeries(seriesFilter, openSeriesInfo.name)}
+                  title="Delete series"
+                  aria-label="Delete series"
+                >{ICONS.trash}</button>
+              </div>
             </div>
-
-            <button
-              className="global-search-btn"
-              onClick={() => setGlobalSearchOpen(true)}
-              title="Search every category (Ctrl+Shift+K)"
-            >
-              {ICONS.search} All categories
-            </button>
-
-            <button
-              className="global-search-btn ai-open-btn"
-              onClick={() => setAiOpen(true)}
-              title="Ask your library — semantic search, recommendations, series detection"
-            >
-              {ICONS.sparkle} Ask AI
-            </button>
-
-            {tagFilter && (
-              <button
-                className="tag-filter-active"
-                onClick={() => setTagFilter(null)}
-                title="Clear tag filter"
-              >
-                <span className="tag-filter-hash">#</span>
-                {tagFilter}
-                <span className="tag-filter-x">✕</span>
-              </button>
-            )}
-          </div>
+          )}
 
           {view === 'timeline' ? (
             <div className="timeline-container">
@@ -1126,6 +1158,7 @@ export default function App() {
               <ListView
                 entries={filteredEntries}
                 color={activeCat?.color}
+                hideSeries={openSeriesInfo != null}
                 onDelete={handleDelete}
                 onEdit={handleEdit}
                 onIncrement={handleIncrement}
@@ -1140,32 +1173,38 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="entries-grid" style={{ display: view === 'grid' ? undefined : 'none' }}>
-            {filteredEntries.length === 0 && (query || seriesList.length === 0) && (
+          <div
+            ref={gridRef}
+            className="entries-grid"
+            style={{ display: view === 'grid' ? undefined : 'none' }}
+            onScroll={e => {
+              if (seriesFilter == null) overviewScrollRef.current = { cat: category, top: e.currentTarget.scrollTop }
+            }}
+          >
+            {filteredEntries.length === 0 && (query || seriesList.length === 0 || openSeriesInfo) && (
               <div className="empty-state">
                 {query ? (
                   <p>No matches for &ldquo;{search}&rdquo;.</p>
+                ) : openSeriesInfo ? (
+                  <p>{statusFilter !== 'all' ? 'No entries in this series match the status filter.' : 'This series has no entries yet.'}</p>
                 ) : emptyLibrary}
               </div>
             )}
-            {(seriesFilter != null || tagFilter != null || query
-              ? filteredEntries.map(e => ({ type: 'solo', entry: e }))
-              : groupEntries(filteredEntries, seriesList)
-            ).map(item =>
-              item.type === 'series' ? (
+            {gridItems.map(item =>
+              item.type === 'label' ? (
+                <div key="label:standalone" className="grid-section-label">{item.text}</div>
+              ) : item.type === 'new-series' ? (
+                <NewSeriesTile key="new-series" color={activeCat?.color} onCreate={handleNewSeries} />
+              ) : item.type === 'series' ? (
                 <SeriesGroup
                   key={`series:${item.id}`}
                   seriesId={item.id}
                   name={item.name}
-                  entries={item.entries}
+                  entries={entriesBySeries.get(item.id) ?? []}
                   color={activeCat?.color}
-                  onDelete={handleDelete}
-                  onEdit={handleEdit}
-                  onIncrement={handleIncrement}
+                  onOpen={openSeries}
                   onDropEntry={handleDropEntry}
                   onDeleteSeries={handleDeleteSeries}
-                  onTagClick={handleTagClick}
-                  activeTag={tagFilter}
                 />
               ) : (
                 <EntryCard
@@ -1177,6 +1216,7 @@ export default function App() {
                   onIncrement={handleIncrement}
                   onTagClick={handleTagClick}
                   activeTag={tagFilter}
+                  hideSeries={openSeriesInfo != null}
                 />
               )
             )}

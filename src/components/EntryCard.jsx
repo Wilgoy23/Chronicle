@@ -18,7 +18,7 @@ function shortStatus(entry) {
   return STATUS_SHORT[entry.status] ?? STATUS_LABELS[entry.status]
 }
 
-export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement, onTagClick, activeTag }) {
+export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement, onTagClick, activeTag, hideSeries = false }) {
   const tags = entry.genres ? entry.genres.split(',').map(t => t.trim()).filter(Boolean) : []
 
   function handleDragStart(e) {
@@ -87,7 +87,7 @@ export default function EntryCard({ entry, color, onDelete, onEdit, onIncrement,
         <h3 className="card-title">{entry.title}</h3>
 
         <div className="card-tags">
-          {entry.series && (
+          {entry.series && !hideSeries && (
             <span className="card-series-tag">{entry.series}</span>
           )}
           {entry.log_count > 0 && (
