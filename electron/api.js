@@ -403,7 +403,80 @@ async function getBookSeries(bookId, rawToken) {
   }
 }
 
+// ── Keyless sources ──────────────────────────────────────────────
+// Used when no Hardcover token / TMDB key is available, so book and TV search
+// work on first launch. Open Library asks API clients to identify themselves.
+
+const KEYLESS_HEADERS = { 'User-Agent': 'Chronicle/1.0 (desktop media tracker)', 'Accept': 'application/json' }
+
+const stripHtml = (s) => (s ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+
+async function searchOpenLibrary(query) {
+  const fields = 'key,title,author_name,cover_i,first_publish_year,number_of_pages_median'
+  const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=20&fields=${fields}`
+  try {
+    const res = await fetch(url, { headers: KEYLESS_HEADERS })
+    if (!res.ok) return { error: `Open Library returned ${res.status}` }
+    const json = await res.json()
+    return (json.docs ?? []).filter(d => d.key && d.title).map(d => ({
+      // "/works/OL45883W" → "OL45883W": stable across editions.
+      id:          String(d.key).replace(/^\/works\//, ''),
+      title:       d.title,
+      author:      (d.author_name ?? []).slice(0, 3).join(', '),
+      cover:       d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : '',
+      description: '',
+      year:        d.first_publish_year ?? null,
+      pages:       d.number_of_pages_median ?? null,
+    }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+async function searchTvMaze(query) {
+  try {
+    const res = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`, { headers: KEYLESS_HEADERS })
+    if (!res.ok) return { error: `TVmaze returned ${res.status}` }
+    const json = await res.json()
+    return (json ?? []).map(({ show: s }) => s).filter(Boolean).map(s => ({
+      id:          s.id,
+      title:       s.name ?? '',
+      cover:       s.image?.medium ?? '',
+      description: stripHtml(s.summary).slice(0, 300),
+      year:        s.premiered?.slice(0, 4) ?? '',
+      genres:      (s.genres ?? []).slice(0, 3).join(', '),
+      score:       s.rating?.average ? Math.round(s.rating.average) : null,
+    }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// TVmaze seasons as release candidates — same shape/ids as getTvSeasons.
+async function getTvMazeSeasons(showId) {
+  try {
+    const [show, seasons] = await Promise.all([
+      fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}`, { headers: KEYLESS_HEADERS }).then(r => r.json()),
+      fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}/seasons`, { headers: KEYLESS_HEADERS }).then(r => r.json()),
+    ])
+    if (!Array.isArray(seasons)) return { error: 'TVmaze lookup failed' }
+    const showName = show?.name ?? 'Untitled'
+    return seasons.filter(s => (s.number ?? 0) > 0).map(s => ({
+      source_id:    `${showId}-s${s.number}`,
+      title:        `${showName} — ${s.name || `Season ${s.number}`}`,
+      cover_url:    s.image?.medium ?? show?.image?.medium ?? null,
+      release_date: s.premiereDate || null,
+      relation:     'New season',
+      unreleased:   !s.premiereDate,
+    }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
 module.exports = {
   searchBooks, searchAnime, searchManga, searchMovies, searchTv, searchGames,
+  searchOpenLibrary, searchTvMaze, getTvMazeSeasons,
   getAnimeRelations, getMangaRelations, getMovieCollection, getTvSeasons, getGameSeries, getBookSeries,
+  KEYLESS_HEADERS, stripHtml,
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Cover from './Cover'
 import { STATUS_LABELS } from '../App'
+import { sourceKey, sourceKeySet } from '../sources'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -8,6 +9,7 @@ const ERROR_TEXT = {
   NOT_IN_SERIES: 'This title isn’t part of a series on the source site.',
   NO_TOKEN:      'An API key is required — add it in Settings → API Keys.',
   UNSUPPORTED:   'Series lookup isn’t available for this category.',
+  NEEDS_HARDCOVER: 'Series lookup for books needs a Hardcover token — add one in Settings → API Keys.',
 }
 
 // Stages a whole series for review: every installment gets a checkbox and its
@@ -23,9 +25,10 @@ export default function SeriesAddSheet({
   const [saving, setSaving]         = useState(false)
   const [summary, setSummary]       = useState(null)
 
-  const existingSourceIds = useMemo(() => new Set(
-    existingEntries.filter(e => e.source_id != null).map(e => String(e.source_id))
-  ), [existingEntries])
+  const existingSourceIds = useMemo(
+    () => sourceKeySet(existingEntries, category),
+    [existingEntries, category],
+  )
 
   useEffect(() => {
     if (!open || !seed) return
@@ -34,14 +37,14 @@ export default function SeriesAddSheet({
     setError(null)
     setRows([])
     setSummary(null)
-    window.api.getSeriesMembers(category, seed.id).then(res => {
+    window.api.getSeriesMembers(category, seed.id, seed.source ?? source).then(res => {
       if (cancelled) return
       setLoading(false)
       if (res?.error) { setError(ERROR_TEXT[res.error] ?? res.error); return }
       const preset = seriesList.find(s => s.id === defaultSeriesId)
       setSeriesName(preset?.name ?? res.seriesName ?? '')
       setRows(res.members.map(m => {
-        const inLibrary = existingSourceIds.has(String(m.source_id))
+        const inLibrary = existingSourceIds.has(sourceKey(source, m.source_id))
         return {
           ...m,
           inLibrary,

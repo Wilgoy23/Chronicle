@@ -1,45 +1,13 @@
 const db = require('./db')
-const api = require('./api')
+const catalog = require('./catalog')
 
 // How recently-released an item can be and still count as "news".
 const RECENT_DAYS = 400
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 const REQUEST_GAP_MS = 350
 
-const SOURCE_BY_CATEGORY = { book: 'hardcover', anime: 'anilist', manga: 'anilist', movie: 'tmdb', tv: 'tmdb', game: 'rawg' }
-
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 const norm  = (s) => (s ?? '').trim().toLowerCase()
-
-function keysFor(category, settings) {
-  return {
-    tmdbKey:        settings.tmdbKey,
-    rawgKey:        settings.rawgKey,
-    hardcoverToken: settings.hardcoverToken,
-  }
-}
-
-function searchFor(category, query, settings) {
-  const k = keysFor(category, settings)
-  if (category === 'book')  return api.searchBooks(query, k.hardcoverToken)
-  if (category === 'anime') return api.searchAnime(query)
-  if (category === 'manga') return api.searchManga(query)
-  if (category === 'movie') return api.searchMovies(query, k.tmdbKey)
-  if (category === 'tv')    return api.searchTv(query, k.tmdbKey)
-  if (category === 'game')  return api.searchGames(query, k.rawgKey)
-  return Promise.resolve([])
-}
-
-function lookupFor(category, sourceId, settings) {
-  const k = keysFor(category, settings)
-  if (category === 'book')  return api.getBookSeries(sourceId, k.hardcoverToken)
-  if (category === 'anime') return api.getAnimeRelations(sourceId)
-  if (category === 'manga') return api.getMangaRelations(sourceId)
-  if (category === 'movie') return api.getMovieCollection(sourceId, k.tmdbKey)
-  if (category === 'tv')    return api.getTvSeasons(sourceId, k.tmdbKey)
-  if (category === 'game')  return api.getGameSeries(sourceId, k.rawgKey)
-  return Promise.resolve([])
-}
 
 // Surface upcoming items and recent installments; drop deep back-catalog.
 function isNoteworthy(c) {
@@ -67,13 +35,13 @@ async function linkExisting(settings) {
   for (const entry of entries) {
     if (prefs.categories[entry.category] === false) continue
     try {
-      const results = await searchFor(entry.category, entry.title, settings)
+      const results = await catalog.search(entry.category, entry.title, settings)
       await sleep(REQUEST_GAP_MS)
       if (!Array.isArray(results) || results.length === 0) continue
       const exact = results.find(r => norm(r.title) === norm(entry.title))
       const match = exact ?? results[0]
-      if (match?.id != null) {
-        db.setEntrySource(entry.id, SOURCE_BY_CATEGORY[entry.category] ?? entry.category, match.id)
+      if (match?.id != null && match.source) {
+        db.setEntrySource(entry.id, match.source, match.id)
       }
     } catch { /* tolerate misses */ }
   }
@@ -97,7 +65,7 @@ async function checkForReleases(settings) {
     if (prefs.categories[entry.category] === false) continue
     let candidates
     try {
-      candidates = await lookupFor(entry.category, entry.source_id, settings)
+      candidates = await catalog.lookupReleases(entry, settings)
       await sleep(REQUEST_GAP_MS)
     } catch { continue }
     if (!Array.isArray(candidates)) continue // {error} or null

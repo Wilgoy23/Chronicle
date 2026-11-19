@@ -3,6 +3,7 @@ import SeriesSelect from './SeriesSelect'
 import Cover from './Cover'
 import SeriesAddSheet from './SeriesAddSheet'
 import { STATUS_LABELS } from '../App'
+import { SOURCE_KEYS, sourceKey, sourceKeySet } from '../sources'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -13,16 +14,6 @@ const API_LABELS = {
   movie: 'TMDB',
   tv:    'TMDB',
   game:  'RAWG',
-}
-
-// Stable source keys persisted with each entry so releases can be looked up later.
-const SOURCE_KEYS = {
-  book:  'hardcover',
-  anime: 'anilist',
-  manga: 'anilist',
-  movie: 'tmdb',
-  tv:    'tmdb',
-  game:  'rawg',
 }
 
 const KEY_HINTS = {
@@ -57,14 +48,14 @@ export default function SearchModal({
   const [dupIds, setDupIds]       = useState(new Set()) // results flagged as duplicates, awaiting "Add anyway"
   const [addCount, setAddCount]   = useState(0)
   const [seriesSeed, setSeriesSeed] = useState(null) // result whose whole series is being staged
+  const [sourceInfo, setSourceInfo] = useState(null) // { source, label, ready } for this category
   const debounceRef = useRef(null)
   const inputRef    = useRef(null)
 
-  // "In Library" is keyed on the external source id (5.7), so a same-title remake
-  // with a different id is still addable. All results here share this category's source.
-  const existingSourceIds = new Set(
-    existingEntries.filter(e => e.source_id != null).map(e => String(e.source_id))
-  )
+  // "In Library" is keyed on the external source + id (5.7), so a same-title
+  // remake with a different id is still addable, and an Open Library id can't
+  // collide with a Hardcover one.
+  const existingSourceIds = sourceKeySet(existingEntries, category)
 
   useEffect(() => {
     if (open) {
@@ -79,6 +70,8 @@ export default function SearchModal({
       setAddCount(0)
       setSeriesSeed(null)
       setDefSeriesId(defaultSeriesId)
+      setSourceInfo(null)
+      window.api.sources?.().then(s => setSourceInfo(s?.[category] ?? null)).catch(() => {})
       setTimeout(() => inputRef.current?.focus(), 60)
     }
   }, [open, category])
@@ -116,13 +109,14 @@ export default function SearchModal({
       genres:    r.genres || null,
       cover_url: r.cover || null,
       series_id: defSeriesId ?? null,
-      date_read: today(),
-      source:    SOURCE_KEYS[category] ?? null,
+      // Only finished items get a date; planned/in-progress ones aren't on the timeline yet.
+      date_read: defStatus === 'completed' ? today() : null,
+      source:    r.source ?? SOURCE_KEYS[category] ?? null,
       source_id: r.id ?? null,
       year:      r.year ?? null,
-      // Episode/chapter counts from the API seed the progress total.
+      // Episode/chapter/page counts from the API seed the progress total.
       progress:       0,
-      progress_total: r.episodes ?? r.chapters ?? null,
+      progress_total: r.episodes ?? r.chapters ?? r.pages ?? null,
       allowDuplicate,
     })
     // A title/year-tier match (not caught by the source-id "In Library" gate):
@@ -139,7 +133,7 @@ export default function SearchModal({
 
   if (!open) return null
 
-  const apiLabel = API_LABELS[category] ?? 'external API'
+  const apiLabel = sourceInfo?.label ?? API_LABELS[category] ?? 'external API'
 
   return (
     <div className="search-modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -206,7 +200,7 @@ export default function SearchModal({
                 <li className="search-modal-hint">Type to search {apiLabel}</li>
               )}
               {results.map(r => {
-                const inLibrary = existingSourceIds.has(String(r.id))
+                const inLibrary = existingSourceIds.has(sourceKey(r.source ?? SOURCE_KEYS[category], r.id))
                 const added = addedIds.has(r.id)
                 const isDup = dupIds.has(r.id)
                 return (
@@ -217,23 +211,27 @@ export default function SearchModal({
                       {(r.author || r.genres) && (
                         <span className="search-modal-sub">{r.author || r.genres}</span>
                       )}
-                      {(r.episodes || r.chapters || r.year) && (
+                      {(r.episodes || r.chapters || r.pages || r.year) && (
                         <span className="search-modal-meta">
                           {[
                             r.episodes && `${r.episodes} eps`,
                             r.chapters && `${r.chapters} ch`,
+                            r.pages && `${r.pages} pages`,
                             r.year,
                           ].filter(Boolean).join(' · ')}
                         </span>
                       )}
                     </div>
-                    <button
-                      className="search-series-btn"
-                      onClick={() => setSeriesSeed(r)}
-                      title="Add every installment of this series, setting a status for each"
-                    >
-                      Add series…
-                    </button>
+                    {/* Open Library has no series data; series lookup needs a Hardcover token. */}
+                    {r.source !== 'openlibrary' && (
+                      <button
+                        className="search-series-btn"
+                        onClick={() => setSeriesSeed(r)}
+                        title="Add every installment of this series, setting a status for each"
+                      >
+                        Add series…
+                      </button>
+                    )}
                     <button
                       className={`search-add-btn${added || inLibrary ? ' search-add-btn--added' : ''}${isDup ? ' search-add-btn--dup' : ''}`}
                       onClick={() => handleAdd(r, isDup)}
@@ -261,7 +259,7 @@ export default function SearchModal({
         category={category}
         color={color}
         seed={seriesSeed}
-        source={SOURCE_KEYS[category] ?? null}
+        source={seriesSeed?.source ?? SOURCE_KEYS[category] ?? null}
         seriesList={seriesList}
         defaultSeriesId={defSeriesId}
         existingEntries={existingEntries}

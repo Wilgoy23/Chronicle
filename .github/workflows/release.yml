@@ -61,6 +61,19 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      # Optional: default TMDB/RAWG keys so movie/game search works without
+      # users bringing their own. Skipped (no file) when the secrets aren't set.
+      # Anything bundled can be extracted from the app — treat these as public.
+      - name: Bundle default API keys
+        shell: bash
+        env:
+          TMDB_KEY: ${{ secrets.CHRONICLE_TMDB_KEY }}
+          RAWG_KEY: ${{ secrets.CHRONICLE_RAWG_KEY }}
+        run: |
+          if [ -n "$TMDB_KEY$RAWG_KEY" ]; then
+            node -e "require('fs').writeFileSync('electron/bundled-keys.json', JSON.stringify({ tmdbKey: process.env.TMDB_KEY || '', rawgKey: process.env.RAWG_KEY || '' }))"
+          fi
+
       - name: Build app
         run: npm run build:renderer && npx electron-builder --publish never --config.extraMetadata.version=${{ env.VERSION }}
 

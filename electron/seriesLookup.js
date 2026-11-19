@@ -269,6 +269,37 @@ async function getTvSeriesMembers(tvId, tmdbKey) {
   }
 }
 
+// ── TV (TVmaze, keyless) ─────────────────────────────────────────
+
+async function getTvMazeSeriesMembers(showId) {
+  const headers = { 'User-Agent': 'Chronicle/1.0 (desktop media tracker)', 'Accept': 'application/json' }
+  try {
+    const [show, seasons] = await Promise.all([
+      fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}`, { headers }).then(r => r.json()),
+      fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}/seasons`, { headers }).then(r => r.json()),
+    ])
+    if (!Array.isArray(seasons)) return { error: 'TVmaze lookup failed' }
+    const showName = show?.name ?? 'Untitled'
+    // Same `${showId}-sN` ids as releaseChecker's TVmaze season candidates.
+    const members = seasons.map(s => ({
+      source_id:      `${showId}-s${s.number}`,
+      title:          `${showName} — ${s.name || `Season ${s.number}`}`,
+      cover_url:      s.image?.medium ?? show?.image?.medium ?? null,
+      release_date:   s.premiereDate || null,
+      year:           yearOf(s.premiereDate),
+      position:       s.number > 0 ? s.number : null,
+      unreleased:     !s.premiereDate || Date.parse(s.premiereDate) > Date.now(),
+      progress_total: s.episodeOrder ?? null,
+      optional:       !(s.number > 0),
+      relation:       s.number > 0 ? null : 'Specials',
+    }))
+    members.sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity))
+    return { seriesName: showName, members }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
 // ── Games (RAWG) ─────────────────────────────────────────────────
 
 async function getGameSeriesMembers(gameId, rawgKey) {
@@ -306,7 +337,11 @@ async function getGameSeriesMembers(gameId, rawgKey) {
 
 // ── Dispatcher ───────────────────────────────────────────────────
 
-function getSeriesMembers(category, sourceId, keys = {}) {
+// `source` is the picked search result's own source; when given it wins over
+// the category default (books/TV can come from a keyless fallback source).
+function getSeriesMembers(category, sourceId, keys = {}, source = null) {
+  if (source === 'openlibrary') return Promise.resolve({ error: 'NEEDS_HARDCOVER' })
+  if (source === 'tvmaze')      return getTvMazeSeriesMembers(sourceId)
   if (category === 'book')  return getBookSeriesMembers(sourceId, keys.hardcoverToken)
   if (category === 'anime') return getAniListSeriesMembers(sourceId, 'ANIME')
   if (category === 'manga') return getAniListSeriesMembers(sourceId, 'MANGA')
@@ -319,5 +354,5 @@ function getSeriesMembers(category, sourceId, keys = {}) {
 module.exports = {
   getSeriesMembers,
   getBookSeriesMembers, getAniListSeriesMembers, getMovieSeriesMembers,
-  getTvSeriesMembers, getGameSeriesMembers,
+  getTvSeriesMembers, getTvMazeSeriesMembers, getGameSeriesMembers,
 }
