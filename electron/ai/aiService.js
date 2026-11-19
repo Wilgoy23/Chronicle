@@ -20,6 +20,36 @@ let indexPromise = null           // serializes index runs
 let dirtyTimer = null
 let lastIndex = { total: 0, indexed: 0, at: null }
 
+// In-memory mirror of the embedding index. While it is clean (nothing written
+// since the last ensureIndex, same backend), a query skips the index diff and
+// the blob reads entirely — that diff was most of a query's fixed cost.
+// Every write path already calls markLibraryDirty, which is what clears it.
+let vectorCache = null            // entry_id → Float32Array, or null when dirty
+let vectorModel = null            // the model vectorCache was built under
+
+// Small LRUs for the two per-query costs that repeat: embedding the query text
+// (chip removals and re-asks reuse it) and Ollama's parse of a sentence.
+const QUERY_CACHE_MAX = 200
+const queryVecCache = new Map()   // `${model}\0${text}` → Float32Array
+const llmFilterCache = new Map()  // query → raw Ollama JSON (sanitized per use)
+
+function lruGet(map, key) {
+  if (!map.has(key)) return undefined
+  const v = map.get(key)
+  map.delete(key); map.set(key, v)
+  return v
+}
+
+function lruSet(map, key, value) {
+  map.delete(key)
+  map.set(key, value)
+  if (map.size > QUERY_CACHE_MAX) map.delete(map.keys().next().value)
+}
+
+function indexIsClean() {
+  return vectorCache != null && vectorModel != null && vectorModel === engine.getStatus().model
+}
+
 // The text a vector represents. Notes are included on purpose: "that movie
 // about dreams I loved" should match what the user wrote about it.
 function entryText(e) {
@@ -44,7 +74,11 @@ function textHash(s) {
 // vectors from a different backend. Incremental — a clean library is a no-op.
 async function ensureIndex() {
   if (indexPromise) return indexPromise
+  if (indexIsClean()) return lastIndex
   indexPromise = (async () => {
+    // Anything written while this run is in flight re-dirties the cache via
+    // markLibraryDirty; only a run that finished undisturbed may publish it.
+    const gen = ++indexGen
     const model = await engine.activeModel()
     dbApi.deleteEmbeddingsForOtherModels(model)
     dbApi.pruneOrphanEmbeddings()
@@ -77,6 +111,8 @@ async function ensureIndex() {
       }
     }
     broadcast('ai:indexProgress', { ...lastIndex, done: true, backend: engine.getStatus().backend })
+    const fresh = readVectors()
+    if (gen === indexGen) { vectorCache = fresh; vectorModel = model }
     return lastIndex
   })()
   try {
@@ -89,6 +125,7 @@ async function ensureIndex() {
 // Mutations mark the index dirty; the reindex happens shortly after, off the
 // critical path of the write that triggered it.
 function markLibraryDirty() {
+  invalidateIndex()
   clearTimeout(dirtyTimer)
   dirtyTimer = setTimeout(() => {
     ensureIndex().catch(err => console.error('[ai] index failed:', err))
@@ -96,8 +133,14 @@ function markLibraryDirty() {
   if (dirtyTimer.unref) dirtyTimer.unref()
 }
 
-// entry_id → Float32Array for every indexed entry.
-function loadVectors() {
+let indexGen = 0
+function invalidateIndex() {
+  indexGen++
+  vectorCache = null
+}
+
+// entry_id → Float32Array for every indexed entry, straight from SQLite.
+function readVectors() {
   const map = new Map()
   for (const r of dbApi.getEmbeddingIndex()) {
     map.set(r.entry_id, engine.fromBuffer(r.vector))
@@ -105,11 +148,30 @@ function loadVectors() {
   return map
 }
 
+// Callers run ensureIndex first, so the cache is normally warm; the read is
+// the fallback for a write that landed in between.
+function loadVectors() {
+  return indexIsClean() ? vectorCache : readVectors()
+}
+
+// Embed one query string, memoized per backend so vectors from different
+// models can never be confused.
+async function embedQuery(text) {
+  const key = `${engine.getStatus().model}\0${text}`
+  const hit = lruGet(queryVecCache, key)
+  if (hit) return hit
+  const [vec] = await engine.embedTexts([text])
+  // Re-key on the model that actually answered: the first query can be the one
+  // that resolves the backend.
+  lruSet(queryVecCache, `${engine.getStatus().model}\0${text}`, vec)
+  return vec
+}
+
 // ── Semantic search ──────────────────────────────────────────────
 
 async function semanticSearch(query, { category = null, limit = 20 } = {}) {
   await ensureIndex()
-  const [qvec] = await engine.embedTexts([query])
+  const qvec = await embedQuery(query)
   const vectors = loadVectors()
   const scored = []
   for (const e of dbApi.getEntries(category ?? undefined)) {
@@ -152,20 +214,51 @@ function llmFilterPrompt(query, { categories, genres }) {
   ].join('\n')
 }
 
-// Parse the query (Ollama if enabled, offline heuristics otherwise), filter
-// the library with it, and semantically rank the remainder when the query
-// has a thematic component.
+// Ask Ollama to turn the sentence into a filter. Returns null on any failure;
+// the raw reply is memoized per sentence, and re-sanitized on every use so a
+// category or genre removed since then can't leak back in.
+async function llmFilter(query, { categories, genres, settings }) {
+  let raw = lruGet(llmFilterCache, query)
+  if (raw === undefined) {
+    // available() is the circuit breaker — an unreachable server is skipped
+    // silently for a minute rather than re-failing on every query.
+    if (!ollama.available()) return null
+    try {
+      raw = await ollama.generateJson(settings, llmFilterPrompt(query, { categories, genres }))
+      lruSet(llmFilterCache, query, raw)
+    } catch (err) {
+      console.warn(
+        `[ai] Ollama parse failed (${String(err?.message ?? err)}) — using offline parser` +
+        (ollama.available() ? '' : ', will retry in 60s'))
+      return null
+    }
+  }
+  return sanitizeFilter(raw, { categories, genres })
+}
+
+// Parse the query, filter the library with it, and semantically rank the
+// remainder when the query has a thematic component.
+//
+// `llm` picks the parser, because Ollama costs 0.5–30s and everything else
+// here costs a few milliseconds:
+//   'skip' — offline parser only. The panel calls this first so results show
+//            immediately; `llmPending` tells it whether a follow-up is worth it.
+//   'only' — Ollama only. Returns null when it is unavailable, fails, or reads
+//            the sentence the same way the offline parser did.
+//   'auto' — Ollama when enabled, falling back offline (the original
+//            behaviour; kept for callers that want one round trip).
 //
 // `refine` lets the panel narrow an existing result set without rephrasing:
 // { filter, remove } re-uses the filter already shown as chips and clears one
 // facet by its chip key. The filter still crosses IPC from the renderer, so it
 // is re-sanitized here rather than trusted — but full-range rating bounds are
 // preserved, since a filter we produced meant them literally.
-async function askLibrary(query, { categories = [], refine = null } = {}) {
+async function askLibrary(query, { categories = [], refine = null, llm = 'auto' } = {}) {
   await ensureIndex()
   const entries = dbApi.getEntries()
   const genres = genreVocab(entries)
   const settings = getSettings()
+  const llmUsable = !refine?.filter && ollama.enabled(settings)
 
   let filter = null
   let engineUsed = 'heuristic'
@@ -178,34 +271,36 @@ async function askLibrary(query, { categories = [], refine = null } = {}) {
     }
   }
 
-  // available() is the circuit breaker — an unreachable server is skipped
-  // silently for a minute rather than re-failing on every query.
-  if (!filter && ollama.enabled(settings) && ollama.available()) {
-    try {
-      const raw = await ollama.generateJson(settings, llmFilterPrompt(query, { categories, genres }))
-      filter = sanitizeFilter(raw, { categories, genres })
-      if (filter) engineUsed = 'ollama'
-    } catch (err) {
-      console.warn(
-        `[ai] Ollama parse failed (${String(err?.message ?? err)}) — using offline parser` +
-        (ollama.available() ? '' : ', will retry in 60s'))
-    }
+  if (llm === 'only') {
+    if (!llmUsable) return null
+    filter = await llmFilter(query, { categories, genres, settings })
+    if (!filter) return null
+    const offline = parseQuery(query, { categories, genres })
+    if (JSON.stringify(filter) === JSON.stringify(offline)) return null
+    engineUsed = 'ollama'
+  } else if (!filter && llm !== 'skip' && llmUsable) {
+    filter = await llmFilter(query, { categories, genres, settings })
+    if (filter) engineUsed = 'ollama'
   }
   if (!filter) filter = parseQuery(query, { categories, genres })
 
-  let matched = applyFilter(entries, filter)
+  const matched = applyFilter(entries, filter)
+  let top
   let semantic = false
   if (filter.text) {
-    const [qvec] = await engine.embedTexts([filter.text])
+    const qvec = await embedQuery(filter.text)
     const vectors = loadVectors()
-    matched = matched
-      .map(e => ({ ...e, _score: engine.cosine(qvec, vectors.get(e.id) ?? null) }))
-      .sort((a, b) => b._score - a._score)
+    // Score into a flat array and copy only the rows that are returned, rather
+    // than cloning every matched entry just to carry a score through the sort.
+    const scored = matched.map(e => ({ e, s: engine.cosine(qvec, vectors.get(e.id) ?? null) }))
+    scored.sort((a, b) => b.s - a.s)
+    top = scored.slice(0, 40).map(({ e, s }) => ({ entry: e, score: s }))
     semantic = true
   } else {
-    matched = [...matched].sort((a, b) =>
+    top = [...matched].sort((a, b) =>
       (b.rating ?? -1) - (a.rating ?? -1) ||
       String(b.date_read ?? b.created_at ?? '').localeCompare(String(a.date_read ?? a.created_at ?? '')))
+      .slice(0, 40).map(e => ({ entry: e, score: null }))
   }
 
   return {
@@ -213,16 +308,19 @@ async function askLibrary(query, { categories = [], refine = null } = {}) {
     chips: describeFilter(filter, categories),
     engine: engineUsed,
     semantic,
-    results: matched.slice(0, 40).map(e => ({
-      entry: stripScore(e),
-      score: semantic ? (e._score ?? 0) : null,
-    })),
+    // Only meaningful for 'skip': a follow-up 'only' call might improve this.
+    llmPending: llm === 'skip' && llmUsable && ollama.available(),
+    results: top,
   }
 }
 
-function stripScore(e) {
-  const { _score, ...rest } = e
-  return rest
+// Called when the panel opens: load both models before the first question so
+// neither cold start lands on a query. Fire-and-forget from the renderer.
+async function warm() {
+  const settings = getSettings()
+  ensureIndex().catch(() => {})
+  if (ollama.enabled(settings)) ollama.warm(settings).catch(() => {})
+  return true
 }
 
 // ── Recommendations ──────────────────────────────────────────────
@@ -387,8 +485,10 @@ function registerAiHandlers({ readSettings, send, modelCacheDir }) {
   ipcMain.handle('ai:status',       () => status())
   ipcMain.handle('ai:rebuildIndex', async () => {
     dbApi.clearEmbeddings()
+    invalidateIndex()
     return ensureIndex()
   })
+  ipcMain.handle('ai:warm',         () => warm())
   ipcMain.handle('ai:search',       (_e, query, opts)   => semanticSearch(query, opts ?? {}))
   ipcMain.handle('ai:ask',          (_e, query, opts)   => askLibrary(query, opts ?? {}))
   ipcMain.handle('ai:recommend',    (_e, opts)          => recommend(opts ?? {}))
@@ -411,6 +511,6 @@ function shutdownAi() {
 
 module.exports = {
   configure, registerAiHandlers, markLibraryDirty, ensureIndex, shutdownAi,
-  semanticSearch, askLibrary, recommend, suggestNewTitles, detectSeriesSuggestions,
+  semanticSearch, askLibrary, warm, recommend, suggestNewTitles, detectSeriesSuggestions,
   applySeriesSuggestion, undoSeriesSuggestion, entryText, status,
 }

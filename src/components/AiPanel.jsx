@@ -103,26 +103,38 @@ function ResultRow({ entry, subtitle, score, scoreTitle, onSelect, onReveal }) {
 }
 
 function AskTab({ categories, state, setState, onSelect, onReveal }) {
-  const { query, response, busy } = state
+  const { query, response, busy, refining } = state
   const inputRef = useRef(null)
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
   // `refine` re-runs the current filter with one facet cleared, so dismissing a
   // chip narrows the search without the user having to rewrite the sentence.
+  //
+  // Two phases: the offline parser answers in milliseconds and its results show
+  // at once; if Ollama is on, it re-reads the sentence in the background and its
+  // results replace the first set only when it understood something differently.
+  // `seq` drops a late Ollama answer once the user has asked something else.
+  const seq = useRef(0)
   async function runAsk(raw = query, refine = null) {
     const q = String(raw).trim()
     if (busy || (!q && !refine)) return
+    const mine = ++seq.current
+    const cats = categories.map(c => ({ id: c.id, label: c.label }))
     setState(s => ({ ...s, query: q, busy: true }))
+    let res
     try {
-      const res = await window.ai.ask(q, {
-        categories: categories.map(c => ({ id: c.id, label: c.label })),
-        refine,
-      })
-      setState(s => ({ ...s, response: res, busy: false }))
+      res = await window.ai.ask(q, { categories: cats, refine, llm: 'skip' })
+      setState(s => ({ ...s, response: res, busy: false, refining: !!res?.llmPending }))
     } catch {
-      setState(s => ({ ...s, response: { error: 'Something went wrong running that query.' }, busy: false }))
+      setState(s => ({ ...s, response: { error: 'Something went wrong running that query.' }, busy: false, refining: false }))
+      return
     }
+    if (!res?.llmPending) return
+    let better = null
+    try { better = await window.ai.ask(q, { categories: cats, llm: 'only' }) } catch { /* keep offline results */ }
+    if (seq.current !== mine) return
+    setState(s => ({ ...s, refining: false, ...(better ? { response: better } : {}) }))
   }
 
   function removeChip(key) {
@@ -185,6 +197,7 @@ function AskTab({ categories, state, setState, onSelect, onReveal }) {
             <span className="ai-engine-note" title={ENGINE_LABELS[response.engine]?.hint}>
               {ENGINE_LABELS[response.engine]?.text ?? response.engine}
               {response.semantic ? ', ranked by meaning' : ''}
+              {refining ? ' · checking with Ollama…' : ''}
             </span>
           </div>
           {count === 0 ? (
@@ -644,6 +657,10 @@ export default function AiPanel({
   // on a different tab is disorienting. Tab *contents* still survive (they live
   // here, not in the tab components), so nothing the user typed is lost.
   useEffect(() => { if (open) setTab('ask') }, [open])
+
+  // Load the embedding model and Ollama's model while the user is still
+  // typing, so the first question doesn't pay either cold start.
+  useEffect(() => { if (open) window.ai?.warm?.().catch(() => {}) }, [open])
 
   // Restore focus to whatever opened the panel once it closes.
   useEffect(() => {

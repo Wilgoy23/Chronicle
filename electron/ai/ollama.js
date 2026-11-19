@@ -5,6 +5,10 @@
 const DEFAULT_URL   = 'http://127.0.0.1:11434'
 const DEFAULT_MODEL = 'llama3.2'
 const RETRY_AFTER_MS = 60_000
+// Ollama unloads an idle model after 5 minutes by default, and reloading
+// llama3.2 costs ~30s — longer than the whole Ask feature should ever take.
+// Holding it for half an hour covers a normal browsing session.
+const KEEP_ALIVE = '30m'
 
 // Circuit breaker: after a connection-level failure the server is considered
 // down for a minute, so an enabled-but-stopped Ollama doesn't cost a failed
@@ -73,6 +77,7 @@ async function generateJson(settings, prompt, { timeoutMs = 30000 } = {}) {
         prompt,
         stream: false,
         format: 'json',
+        keep_alive: KEEP_ALIVE,
         options: { temperature: 0 },
       }),
     }, timeoutMs)
@@ -86,4 +91,23 @@ async function generateJson(settings, prompt, { timeoutMs = 30000 } = {}) {
   return JSON.parse(data.response)
 }
 
-module.exports = { ping, generateJson, enabled, available, baseUrl, modelName, DEFAULT_URL, DEFAULT_MODEL }
+// Load the model into memory without generating anything (an empty prompt is
+// Ollama's documented preload), so the first real query doesn't pay the cold
+// start. Fire-and-forget: failures only matter to the breaker.
+async function warm(settings) {
+  if (!enabled(settings) || !available()) return false
+  try {
+    const res = await fetchWithTimeout(`${baseUrl(settings)}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelName(settings), keep_alive: KEEP_ALIVE }),
+    }, 60000)
+    if (res.ok) markUp()
+    return res.ok
+  } catch (err) {
+    if (isConnectionError(err)) markDown()
+    return false
+  }
+}
+
+module.exports = { ping, generateJson, warm, enabled, available, baseUrl, modelName, DEFAULT_URL, DEFAULT_MODEL }
