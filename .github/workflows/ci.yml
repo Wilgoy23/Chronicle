@@ -8,7 +8,9 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which Playwright can't install
+    # system dependencies for yet.
+    runs-on: ubuntu-24.04
 
     env:
       # onnxruntime-node's postinstall fetches CUDA binaries on Linux x64 and
@@ -26,8 +28,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ubuntu-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: ubuntu-node-
+          key: ubuntu-24.04-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: ubuntu-24.04-node-
 
       - name: Cache Electron binaries
         uses: actions/cache@v4
@@ -53,8 +55,10 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
+      # E2E drives Electron via Playwright's _electron launcher, so only the
+      # system libraries are needed, not Playwright's own Chromium download.
+      - name: Install Electron system dependencies
+        run: npx playwright install-deps chromium
 
       - name: Run E2E tests
         run: xvfb-run -a npm run test:e2e
