@@ -247,7 +247,7 @@ function ListDetail({ list, categories, version, hiddenIds, onBack, onChanged, o
       ) : (
         <div className="list-header">
           <div className="list-header-text">
-            <h2 className="list-title">{list.name}</h2>
+            <h2 className="list-page-title">{list.name}</h2>
             {list.description && <p className="list-desc">{list.description}</p>}
             <div className="list-stats">
               <span>{plural(all.length, 'title')}</span>

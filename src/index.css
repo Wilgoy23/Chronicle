@@ -4753,7 +4753,7 @@ body {
 
 .list-header { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
 .list-header-text { display: flex; flex: 1; flex-direction: column; gap: 0.4rem; min-width: 240px; }
-.list-title { color: var(--text-strong); font-size: 1.35rem; font-weight: 750; letter-spacing: -0.025em; }
+.list-page-title { color: var(--text-strong); font-size: 1.35rem; font-weight: 750; letter-spacing: -0.025em; }
 .list-desc { color: var(--text-dim); font-size: 0.85rem; line-height: 1.55; max-width: 620px; }
 .list-stats {
   align-items: center;

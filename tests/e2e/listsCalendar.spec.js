@@ -66,7 +66,7 @@ test('create a list, add titles from several categories, reorder and annotate', 
   await page.locator('.lists-head button', { hasText: 'New list' }).click()
   await page.fill('input[aria-label="List name"]', 'Comfort picks')
   await page.locator('.list-new-form button', { hasText: 'Create list' }).click()
-  await expect(page.locator('.list-title')).toHaveText('Comfort picks')
+  await expect(page.locator('.list-page-title')).toHaveText('Comfort picks')
 
   await page.locator('.list-header-actions button', { hasText: 'Add titles' }).click()
   const picker = page.locator('.list-picker')
