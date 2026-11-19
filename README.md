@@ -13,6 +13,10 @@ data never leaves your machine.
   back to Open Library and TV to TVmaze until you add a Hardcover token / TMDB key
 - **Up Next** — what you're in the middle of, one-click progress, episode lists, and the next
   installment of series you've started
+- **Lists** — ordered lists that mix categories ("Comfort rewatches", "Before the sequel"), with
+  per-item notes, separate from status
+- **Release calendar** — a month view of sequels, new seasons and episode air dates for what you're
+  watching, exportable as an `.ics` file (or a file kept up to date for calendar subscriptions)
 - **Import** — from Goodreads, StoryGraph, AniList (by username), MyAnimeList, or Letterboxd
 - **Track status** — completed, in progress (with page/episode/hour progress), or planned
 - **Ratings, notes, cover art, series groupings, and tags/genres**

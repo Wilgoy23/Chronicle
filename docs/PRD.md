@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-11-18
+> Last updated: 2026-11-19
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -42,6 +42,8 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 7.2 | Progress activity history + episode grid | M7 | P1 | ✅ |
 | 7.3 | Up Next page | M7 | P0 | ✅ |
 | 7.4 | Import expansion (AniList, StoryGraph, richer Goodreads/Letterboxd) | M7 | P0 | ✅ |
+| 8.1 | Custom lists (ordered, cross-category) | M8 | P1 | ✅ |
+| 8.2 | Release calendar + .ics export | M8 | P1 | ✅ |
 
 *(Milestone 6 lives in [PRD-followups.md](./PRD-followups.md).)*
 
@@ -674,6 +676,68 @@ keyless Open Library search).
 
 ---
 
+## Milestone 8 — Organising & planning
+
+Goal: two "strong additions" from the same comparison: Sofa-style lists, and a calendar of what's
+coming (MyLists, Yamtrack) built on data the release checker and episode lists already have.
+
+### 8.1 Custom lists — ✅ Done `P1`
+
+- [x] Lists page (sidebar, below Up Next): cards with a cover mosaic, title count and how many are done
+- [x] A list holds library entries from **any category**, in a user-defined order (drag the handle,
+      or the ▲/▼ buttons), with an optional per-item note ("why it's on this list")
+- [x] "Add titles" picker searches the whole library, filterable by category
+- [x] Edit panel "Lists" section: chips for the lists an entry is on, add to another or a new list;
+      applies immediately rather than on Save
+- [x] Rename / describe / delete a list (deleting keeps the entries); "Hide completed" toggle
+- [x] Lists and their items included in JSON export/import
+
+**Implementation notes:** `lists` + `list_items (list_id, entry_id, position, note, UNIQUE(list_id,
+entry_id))` in `electron/db.js`; `reorderList` takes the full new order and rewrites positions in one
+transaction (ids it doesn't know are ignored, omitted ones keep their order at the end).
+`deleteEntry` removes the entry from every list. On import, lists merge into a same-named list, and
+items follow entries that were skipped as duplicates to the copy already in the library, so
+re-importing an export keeps membership. Items are library entries only. To list something you
+don't have yet, add it as Planned first.
+
+### 8.2 Release calendar — ✅ Done `P1`
+
+- [x] Calendar page: month grid (week starts per locale) with a day agenda beside it
+- [x] Two kinds of event: **releases** the checker found (filled chips; includes ones already added
+      to the library, linked to that entry) and **episode air dates** for TV / anime you're watching
+      or plan to watch (outlined chips; a season dropped in one day is one "S2E1–E8" event)
+- [x] Filter by kind and category; add a release to Planned or dismiss it from the agenda
+- [x] **.ics export**: save a one-off copy, or **keep a file updated** at a path you choose. It is
+      rewritten at launch, after each release check, and on "Update now"
+
+**Implementation notes:** `electron/calendar.js`. Pure builders (`releaseEvents`, `episodeEvents`,
+`episodeCandidates`), `collectCalendar` (episode lookups go through the existing 12h `media_cache`;
+at most 60 shows, 4 at a time, watching before planned), and an RFC 5545 serializer (`toIcs`:
+all-day `VALUE=DATE` events, stable UIDs so re-imports update rather than duplicate, escaping, 75-octet
+line folding, CRLF). The page loads releases first, then episodes in a second pass. Month-grid maths is
+in `src/calendarGrid.js`.
+
+**Why a kept-updated file rather than a feed URL:** Google Calendar subscriptions need a URL Google's
+servers can reach, which a local-first desktop app can't provide without hosting the user's data. The
+supported route is to keep the file in a Dropbox / OneDrive / iCloud folder and subscribe to its public
+share link; Apple Calendar and Outlook can also import the file directly. The exported window runs
+from 30 days back to 365 days ahead.
+
+**Limits:** completed TV shows aren't checked for new episodes (only watching/planned), to keep
+calendar loads to a bounded number of network calls; season pickups for those still arrive through
+the release checker. Episode air dates are dates, not times, and are shown as all-day events.
+
+**Verification (8.1–8.2).** `npm test` → **434/434 pass** (+41 across `lists`, `calendar`,
+`calendarGrid`). `vite build` clean. Playwright e2e → **24/24 pass**, including the new
+`listsCalendar` spec. It creates a list, adds titles from three categories, reorders and annotates
+them, and edits membership from the edit panel. For the calendar, it runs a real release check
+against a stubbed AniList response, then checks that the release appears on today's cell and adds it
+to the library. Finally it writes a kept-updated `.ics` through a stubbed save dialog and asserts on
+the file's contents. Both pages were also checked in screenshots, in dark and light themes and at
+narrow width.
+
+---
+
 ## Out of scope (for now)
 
 - Cloud sync / accounts — Chronicle is deliberately local-first
@@ -707,3 +771,4 @@ keyless Open Library search).
 | 2026-07-27 | 5.6 Light theme (`:root[data-theme=light]` palette swap + `color-scheme`; `--text-strong`/`--raise`/`--glass-bg` tokens replace dark-only white literals; `theme.js` persistence + no-flash boot; Appearance section in Settings) — renderer-only, build clean |
 | 2026-07-27 | 5.7 Smarter duplicate detection (`year` column; tiered `findDuplicate` source+source_id → title+year → title, category-scoped; `allowDuplicate` "Add anyway" in manual + search; source_id-based "In Library" gate) — **Milestone 5 complete** — 129/129 tests |
 | 2026-11-18 | Milestone 7: 7.1 keyless sources (Open Library / TVmaze fallback, bundled keys), 7.2 activity history + episode grid, 7.3 Up Next page, 7.4 AniList/StoryGraph import + richer Goodreads/Letterboxd + import dialog — 393/393 unit, 20/20 e2e |
+| 2026-11-19 | Milestone 8: 8.1 custom lists (ordered, cross-category, notes, edit-panel membership, export/import), 8.2 release calendar (month grid + agenda, releases + episode air dates, .ics export and kept-updated file) — 434/434 unit, 24/24 e2e |
