@@ -25,6 +25,7 @@ describe('mapLetterboxd', () => {
       notes:      '(2021) — Tags: sci-fi',
       date_read:  '2023-01-01',
       created_at: '2023-01-05 00:00:00',
+      year:       2021,
     }])
   })
 

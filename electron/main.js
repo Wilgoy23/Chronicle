@@ -12,7 +12,9 @@ const { runReleaseScan }   = require('./releaseChecker')
 const { toCsv }            = require('./csv')
 const { mapGoodreads }     = require('./importers/goodreads')
 const { mapMal }           = require('./importers/mal')
-const { mapLetterboxd }    = require('./importers/letterboxd')
+const { mapLetterboxdFiles, letterboxdKind } = require('./importers/letterboxd')
+const { mapStoryGraph }    = require('./importers/storygraph')
+const { fetchAniList }     = require('./importers/anilist')
 
 let mainWindow = null
 
@@ -199,20 +201,51 @@ app.whenReady().then(() => {
     }
   })
 
+  // Several CSVs from one Letterboxd export can be picked at once
+  // (diary/ratings/watched/watchlist); each maps by its filename.
   ipcMain.handle('data:importLetterboxd', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-      title: 'Import Letterboxd diary.csv',
+      title: 'Import Letterboxd CSVs (diary, ratings, watched, watchlist)',
+      filters: [{ name: 'CSV', extensions: ['csv'] }],
+      properties: ['openFile', 'multiSelections'],
+    })
+    if (canceled || !filePaths?.length) return { ok: false, canceled: true }
+    try {
+      const files = filePaths.map(p => ({ text: fs.readFileSync(p, 'utf8'), kind: letterboxdKind(p) }))
+      const result = importData(mapLetterboxdFiles(files))
+      if (result.ok && result.imported) markLibraryDirty()
+      return result
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('data:importStoryGraph', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import StoryGraph CSV export',
       filters: [{ name: 'CSV', extensions: ['csv'] }],
       properties: ['openFile'],
     })
     if (canceled || !filePaths?.length) return { ok: false, canceled: true }
     try {
-      const data = mapLetterboxd(fs.readFileSync(filePaths[0], 'utf8'))
-      const result = importData(data)
+      const result = importData(mapStoryGraph(fs.readFileSync(filePaths[0], 'utf8')))
       if (result.ok && result.imported) markLibraryDirty()
       return result
     } catch (err) {
       return { ok: false, error: String(err) }
+    }
+  })
+
+  // Reads a public AniList list over the network — no file, no key.
+  ipcMain.handle('data:importAniList', async (_e, username) => {
+    try {
+      const data = await fetchAniList(username)
+      if (!data.entries.length) return { ok: false, error: 'That AniList list is empty.' }
+      const result = importData(data)
+      if (result.ok && result.imported) markLibraryDirty()
+      return result
+    } catch (err) {
+      return { ok: false, error: err?.message ?? String(err) }
     }
   })
 

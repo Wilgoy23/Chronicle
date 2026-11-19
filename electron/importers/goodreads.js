@@ -17,11 +17,26 @@ function goodreadsDate(raw) {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
 
+// Goodreads appends series info to titles: "The Way of Kings (The Stormlight
+// Archive, #1)" → { title: 'The Way of Kings', series: 'The Stormlight Archive' }.
+function splitSeriesTitle(raw) {
+  const m = String(raw ?? '').trim().match(/^(.*\S)\s+\(([^()]+?),?\s+#[\d.]+(?:-[\d.]+)?\)$/)
+  return m ? { title: m[1], series: m[2].trim() } : { title: String(raw ?? '').trim(), series: null }
+}
+
+const intOrNull = (v) => {
+  const n = parseInt(String(v ?? '').trim(), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 function mapGoodreads(csvText) {
   const entries = []
+  const logs = []
+  const series = new Set()
+  let nextId = 1
 
   for (const row of parseCsv(csvText)) {
-    const title = (row['Title'] || '').trim()
+    const { title, series: seriesName } = splitSeriesTitle(row['Title'])
     if (!title) continue
 
     const shelf  = (row['Exclusive Shelf'] || '').trim().toLowerCase()
@@ -31,20 +46,44 @@ function mapGoodreads(csvText) {
     const rating = Number.isFinite(stars) && stars > 0 ? stars * 2 : null
 
     const author  = (row['Author'] || '').trim()
+    const review  = (row['My Review'] || '').trim()
     const dateAdd = goodreadsDate(row['Date Added'])
 
-    entries.push({
+    // Personal shelves (minus the three status shelves) become tags.
+    const shelves = (row['Bookshelves'] || '').split(',').map(s => s.trim())
+      .filter(s => s && !Object.hasOwn(SHELF_STATUS, s.toLowerCase()))
+    const readCount = intOrNull(row['Read Count'])
+    const needsId = readCount > 1
+
+    const entry = {
       category:   'book',
       title,
       status,
       rating,
-      notes:      author ? `By ${author}` : '',
+      notes:      [author && `By ${author}`, review].filter(Boolean).join('\n\n'),
       date_read:  goodreadsDate(row['Date Read']),
       created_at: dateAdd ? `${dateAdd} 00:00:00` : undefined,
-    })
+      series:     seriesName ?? undefined,
+      year:       intOrNull(row['Original Publication Year']) ?? intOrNull(row['Year Published']) ?? undefined,
+      progress_total: intOrNull(row['Number of Pages']) ?? undefined,
+      genres:     shelves.length ? shelves.join(', ') : undefined,
+      // An id is only needed to attach re-read logs (importData remaps it).
+      id:         needsId ? nextId++ : undefined,
+    }
+    entries.push(entry)
+    if (seriesName) series.add(seriesName)
+    if (needsId) {
+      for (let i = 1; i < readCount; i++) {
+        logs.push({ entry_id: entry.id, date: null, rating: null, notes: 'Imported re-read' })
+      }
+    }
   }
 
-  return { format: 'chronicle-export', version: 1, entries, series: [] }
+  return {
+    format: 'chronicle-export', version: 1, entries,
+    series: [...series].map(name => ({ category: 'book', name })),
+    logs,
+  }
 }
 
-module.exports = { mapGoodreads, goodreadsDate }
+module.exports = { mapGoodreads, goodreadsDate, splitSeriesTitle }
