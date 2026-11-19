@@ -2,6 +2,31 @@ import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_CATEGORIES, STATUS_LABELS, progressUnit, categoryVerbs } from '../App'
 import SeriesSelect from './SeriesSelect'
 import Cover from './Cover'
+import EpisodeTracker, { hasEpisodeList } from './EpisodeTracker'
+import { statusForProgress, parseDbTime } from '../progress'
+
+const ACTIVITY_CAP = 8
+
+function activityDate(at) {
+  const d = parseDbTime(at)
+  if (!d) return '—'
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
+}
+
+// "Started · +3 episodes (now 3)" — one line per activity row.
+function activityText(a, unit) {
+  const parts = []
+  if (a.status === 'in_progress') parts.push('Started')
+  else if (a.status === 'completed') parts.push('Finished')
+  else if (a.status === 'planned') parts.push('Moved to planned')
+  if (a.delta) {
+    const n = Math.abs(a.delta)
+    const u = n === 1 ? unit.replace(/s$/, '') : unit
+    parts.push(`${a.delta > 0 ? '+' : '−'}${n} ${u} (now ${a.progress})`)
+  }
+  return parts.join(' · ') || 'Updated'
+}
 
 // Noun for the "Log another …" button, per category.
 function logNoun(category) {
@@ -21,6 +46,8 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
   const [logDate, setLogDate]     = useState('')
   const [logRating, setLogRating] = useState('')
   const [logNotes, setLogNotes]   = useState('')
+  const [activity, setActivity]   = useState([])
+  const [showAllActivity, setShowAllActivity] = useState(false)
   const titleRef = useRef(null)
 
   useEffect(() => {
@@ -39,6 +66,9 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
         year:      entry.year != null ? String(entry.year) : '',
       })
       window.db.getLogs(entry.id).then(setLogs)
+      setActivity([])
+      setShowAllActivity(false)
+      window.db.getActivity?.(entry.id).then(setActivity)
       setLogOpen(false)
       setLogDate(today())
       setLogRating('')
@@ -72,6 +102,22 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Episode grid click: move progress, keep the total in step with the list,
+  // and let status follow (first episode starts it, last one finishes it).
+  function handleEpisodes(next, listTotal) {
+    setForm(prev => {
+      const status = statusForProgress(prev.status, next, listTotal)
+      const finishing = status === 'completed' && prev.status !== 'completed'
+      return {
+        ...prev,
+        progress:       String(next),
+        progress_total: String(listTotal),
+        status,
+        date_read: finishing && !prev.date_read ? today() : prev.date_read,
+      }
+    })
   }
 
   async function handleSubmit(e) {
@@ -195,6 +241,17 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
                   />
                   <span className="edit-progress-unit">{progressUnit(entry.category)}</span>
                 </div>
+              </div>
+            )}
+
+            {hasEpisodeList(entry) && (
+              <div className="edit-label">
+                Episodes
+                <EpisodeTracker
+                  entry={entry}
+                  progress={form.progress !== '' ? Number(form.progress) : 0}
+                  onChange={handleEpisodes}
+                />
               </div>
             )}
 
@@ -351,6 +408,25 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
               <button type="button" className="edit-log-add-btn" onClick={() => setLogOpen(true)}>
                 + Log another {logNoun(entry.category)}
               </button>
+            )}
+
+            {activity.length > 0 && (
+              <>
+                <div className="edit-section-label edit-section-label--extra">Activity</div>
+                <div className="edit-activity-list">
+                  {(showAllActivity ? activity : activity.slice(0, ACTIVITY_CAP)).map(a => (
+                    <div className="edit-activity-row" key={a.id}>
+                      <span className="edit-log-date">{activityDate(a.at)}</span>
+                      <span className="edit-activity-text">{activityText(a, progressUnit(entry.category))}</span>
+                    </div>
+                  ))}
+                </div>
+                {activity.length > ACTIVITY_CAP && (
+                  <button type="button" className="edit-log-add-btn" onClick={() => setShowAllActivity(s => !s)}>
+                    {showAllActivity ? 'Show less' : `Show all ${activity.length}`}
+                  </button>
+                )}
+              </>
             )}
 
           </div>

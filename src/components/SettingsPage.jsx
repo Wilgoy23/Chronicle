@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createCustomCategory } from '../App'
 import { getTheme, setTheme } from '../theme'
 import ConfirmDialog from './ConfirmDialog'
+import ImportDialog from './ImportDialog'
 
 const SECTIONS = [
   { id: 'appearance',    label: 'Appearance',    icon: '🎨' },
@@ -141,30 +142,71 @@ function ApiKeyField({ label, hint, value, onSave, settingKey }) {
   )
 }
 
+const SOURCE_ROWS = [
+  { cat: 'book',  label: 'Books' },
+  { cat: 'anime', label: 'Anime' },
+  { cat: 'manga', label: 'Manga' },
+  { cat: 'movie', label: 'Movies' },
+  { cat: 'tv',    label: 'TV Shows' },
+  { cat: 'game',  label: 'Games' },
+]
+
+function sourceStatus(info) {
+  if (!info) return { text: '…', tone: '' }
+  if (!info.ready) return { text: `${info.label} — needs a key`, tone: 'err' }
+  if (info.keyOrigin === 'user')    return { text: `${info.label} (your key)`, tone: 'ok' }
+  if (info.keyOrigin === 'bundled') return { text: `${info.label} (built-in key)`, tone: 'ok' }
+  return { text: `${info.label} (no key needed)`, tone: 'ok' }
+}
+
 function ApiSection({ settings, onSave }) {
+  const [sources, setSources] = useState(null)
+
+  // Re-read after every save: adding/removing a key can switch a category's source.
+  useEffect(() => {
+    window.api.sources?.().then(setSources).catch(() => setSources(null))
+  }, [settings.hardcoverToken, settings.tmdbKey, settings.rawgKey])
+
   return (
     <section className="settings-section">
       <h2>API Keys</h2>
       <p className="settings-desc">
-        Keys are stored locally and only sent to the respective API.
+        Keys are optional. Books search Open Library and TV searches TVmaze until you add
+        a key; anime and manga always use AniList, which needs no key. Adding your own key
+        switches that category to the richer source and takes priority over any key
+        built into this copy of Chronicle. Keys are stored locally and only sent to the
+        respective API.
       </p>
+
+      <div className="source-status-grid">
+        {SOURCE_ROWS.map(r => {
+          const s = sourceStatus(sources?.[r.cat])
+          return (
+            <div key={r.cat} className="source-status-row">
+              <span className="source-status-cat">{r.label}</span>
+              <span className={`setting-status ${s.tone}`}>{s.text}</span>
+            </div>
+          )
+        })}
+      </div>
+
       <ApiKeyField
         label="Hardcover Token"
-        hint="hardcover.app → Settings → API"
+        hint="hardcover.app → Settings → API · optional: replaces Open Library, adds book series lookup"
         value={settings.hardcoverToken}
         settingKey="hardcoverToken"
         onSave={patch => onSave({ hardcoverToken: patch.hardcoverToken?.replace(/^Bearer\s+/i, '') })}
       />
       <ApiKeyField
         label="TMDB API Key"
-        hint="themoviedb.org → Settings → API → API Key (v3 auth)"
+        hint="themoviedb.org → Settings → API → API Key (v3 auth) · needed for movies; replaces TVmaze for TV"
         value={settings.tmdbKey}
         settingKey="tmdbKey"
         onSave={onSave}
       />
       <ApiKeyField
         label="RAWG API Key"
-        hint="rawg.io → API Key (free account required)"
+        hint="rawg.io → API Key (free account required) · needed for games"
         value={settings.rawgKey}
         settingKey="rawgKey"
         onSave={onSave}
@@ -618,12 +660,9 @@ const EXPORT_MSG = {
     + (res.logsImported ? `, ${res.logsImported} re-watch/re-read log${res.logsImported === 1 ? '' : 's'}` : '')
     + '. Reloading…',
 }
-EXPORT_MSG.goodreads   = EXPORT_MSG.import
-EXPORT_MSG.mal         = EXPORT_MSG.import
-EXPORT_MSG.letterboxd  = EXPORT_MSG.import
-
 function DataSection() {
   const [stats, setStats]   = useState(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy]     = useState(null)   // action id currently running
   const [msg, setMsg]       = useState(null)   // { ok, text } feedback
@@ -644,7 +683,7 @@ function DataSection() {
       if (res?.ok) {
         setMsg({ ok: true, text: (EXPORT_MSG[action] ?? (() => 'Done.'))(res) })
         // Import mutates the library — reload so the grid/insights pick it up.
-        if (['import', 'goodreads', 'mal', 'letterboxd'].includes(action) && res.imported > 0) {
+        if (action === 'import' && res.imported > 0) {
           setTimeout(() => window.location.reload(), 1400)
           return
         }
@@ -689,24 +728,23 @@ function DataSection() {
       <div className="data-actions">
         <h3>Export &amp; backup</h3>
         <p className="settings-desc">
-          JSON is a full snapshot (entries + series); CSV is a spreadsheet of entries;
-          a database backup can be restored later to replace your library.
-          Importing a JSON export merges its entries in, skipping ones you already have.
-          A Goodreads CSV export imports as Books, a MyAnimeList export imports as
-          Anime/Manga, and a Letterboxd diary.csv export imports as Movies, the same way.
+          JSON is a full snapshot (entries, series, re-watch logs and activity); CSV is a
+          spreadsheet of entries; a database backup can be restored later to replace your library.
+          Importing merges entries in, skipping ones you already have — from a Chronicle JSON
+          export, or from Goodreads, StoryGraph, AniList, MyAnimeList or Letterboxd.
         </p>
         <div className="data-btn-row">
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('json',        () => window.data.exportJson())}>Export JSON</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('csv',         () => window.data.exportCsv())}>Export CSV</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('import',      () => window.data.importJson())}>Import JSON…</button>
-          <button className="data-action-btn" disabled={!!busy} onClick={() => run('goodreads',   () => window.data.importGoodreads())}>Import Goodreads CSV…</button>
-          <button className="data-action-btn" disabled={!!busy} onClick={() => run('mal',         () => window.data.importMal())}>Import MyAnimeList…</button>
-          <button className="data-action-btn" disabled={!!busy} onClick={() => run('letterboxd',  () => window.data.importLetterboxd())}>Import Letterboxd diary.csv…</button>
+          <button className="data-action-btn" disabled={!!busy} onClick={() => setImportOpen(true)}>Import from another app…</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('backup',      () => window.data.backup())}>Back up database</button>
           <button className="data-action-btn" disabled={!!busy} onClick={() => run('restore',     () => window.data.restore())}>Restore from backup…</button>
         </div>
         {msg && <span className={`setting-status ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</span>}
       </div>
+
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
       <div className="danger-zone">
         <h3>Danger Zone</h3>

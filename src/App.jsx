@@ -12,6 +12,9 @@ import TimelineView from './components/TimelineView'
 import SettingsPage from './components/SettingsPage'
 import ReleasesPanel from './components/ReleasesPanel'
 import InsightsPage from './components/InsightsPage'
+import UpNextPage from './components/UpNextPage'
+import ImportDialog, { IMPORT_SOURCES } from './components/ImportDialog'
+import { progressUpdate } from './progress'
 
 export const DEFAULT_CATEGORIES = [
   { id: 'book',  label: 'Books',    icon: '📖', color: '#e8a838', enabled: true },
@@ -55,6 +58,8 @@ export const ICONS = {
   bell:     <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   search:   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
   sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
+  upnext:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>,
+  import:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
   insights: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="21" x2="21" y2="21"/><rect x="5" y="11" width="3.4" height="7"/><rect x="10.3" y="6" width="3.4" height="12"/><rect x="15.6" y="14" width="3.4" height="4"/></svg>,
   fallback: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>,
 }
@@ -82,7 +87,7 @@ export function createCustomCategory({ name, icon, color }) {
 
 // Nav glyph for a category: the hand-drawn SVG for a known built-in id,
 // otherwise the category's own emoji, falling back to a generic bookmark.
-function catGlyph(cat) {
+export function catGlyph(cat) {
   if (!cat) return ICONS.fallback
   if (ICONS[cat.id]) return ICONS[cat.id]
   if (cat.icon) return <span className="nav-emoji" aria-hidden="true">{cat.icon}</span>
@@ -168,8 +173,11 @@ function groupEntries(entries, allSeries = []) {
   return [...seriesItems, ...soloItems]
 }
 
+const NEUTRAL_ACCENT = '#94a3b8'
+
 export default function App() {
-  const [page, setPage]               = useState('collection')
+  // null until the boot check below picks the landing page.
+  const [page, setPage]               = useState(null)
   const [categories, setCategories]   = useState(DEFAULT_CATEGORIES)
   const [category, setCategory]       = useState(DEFAULT_CATEGORIES[0].id)
   const [entries, setEntries]         = useState([])
@@ -198,14 +206,35 @@ export default function App() {
   const [releases, setReleases]       = useState([])
   const [releasesOpen, setReleasesOpen] = useState(false)
   const [deleteToast, setDeleteToast] = useState(null)  // { title } while an undo is available
-  const pendingDeleteRef              = useRef(null)     // { entry, index } awaiting commit
+  const [pendingDeleteId, setPendingDeleteId] = useState(null) // hidden from Up Next until committed/undone
+  const pendingDeleteRef              = useRef(null)     // { entry, index, inList } awaiting commit
   const deleteTimerRef                = useRef(null)
+  const [upNextVersion, setUpNextVersion] = useState(0)  // bump to make Up Next refetch
+  const [inProgressCount, setInProgressCount] = useState(0)
+  const [importOpen, setImportOpen]   = useState(false)
+
+  const bumpUpNext = () => setUpNextVersion(v => v + 1)
 
   useEffect(() => {
     window.settings.get().then(s => {
       setCategories(mergeCategories(s.categories))
     })
   }, [])
+
+  // Landing page: Up Next when something is in progress (the daily view),
+  // otherwise the library, so a fresh install opens on somewhere to add things.
+  useEffect(() => {
+    window.db.getEntries().then(all => {
+      setPage(all.some(e => e.status === 'in_progress') ? 'upnext' : 'collection')
+    }).catch(() => setPage('collection'))
+  }, [])
+
+  // Sidebar badge for Up Next; cheap enough to recount whenever the library changes.
+  useEffect(() => {
+    window.db.getEntries().then(all => {
+      setInProgressCount(all.filter(e => e.status === 'in_progress').length)
+    }).catch(() => {})
+  }, [upNextVersion, entries])
 
   // Load detected releases and keep them fresh when a background scan finishes.
   useEffect(() => {
@@ -241,6 +270,7 @@ export default function App() {
     if (entry && !entry.error && release.category === activeCat?.id) {
       setEntries(prev => [entry, ...prev])
     }
+    bumpUpNext()
   }
 
   async function handleDismissRelease(release) {
@@ -287,10 +317,11 @@ export default function App() {
   // Global keyboard shortcuts: Esc closes the topmost overlay; Ctrl/Cmd+N adds;
   // Ctrl/Cmd+K|F focuses in-category search; Ctrl/Cmd+Shift+K opens cross-category search.
   useEffect(() => {
-    const anyOverlayOpen = searchOpen || globalSearchOpen || aiOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete
+    const anyOverlayOpen = searchOpen || globalSearchOpen || aiOpen || manualOpen || !!editingEntry || releasesOpen || !!seriesToDelete || importOpen
     function onKey(e) {
       if (e.key === 'Escape') {
         if (seriesToDelete)   { setSeriesToDelete(null); return }
+        if (importOpen)       { setImportOpen(false); return }
         if (editingEntry)     { setEditingEntry(null); return }
         if (manualOpen)       { setManualOpen(false); setPendingSeriesId(null); return }
         if (searchOpen)       { setSearchOpen(false); setPendingSeriesId(null); return }
@@ -311,7 +342,20 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [searchOpen, globalSearchOpen, aiOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, page])
+  }, [searchOpen, globalSearchOpen, aiOpen, manualOpen, editingEntry, releasesOpen, seriesToDelete, importOpen, page])
+
+  // Up Next row → editor, staying on Up Next. Switching the active category
+  // loads that category's series list, which the editor's series picker needs.
+  function handleUpNextOpen(entry) {
+    setCategory(entry.category)
+    setEditingEntry(entry)
+  }
+
+  // An Up Next action changed an entry; mirror it into the category grid if loaded.
+  // (The new array also re-triggers the sidebar's in-progress recount.)
+  function handleUpNextChanged(updated) {
+    setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
+  }
 
   // Jump from a global (cross-category) search hit to its own category tab + edit panel.
   function handleGlobalSelect(entry) {
@@ -387,6 +431,7 @@ export default function App() {
   function handleLogsChanged() {
     refreshEntries()
     refreshLogs()
+    bumpUpNext()
   }
 
   // View preference (grid / list / timeline) persists globally in localStorage.
@@ -420,9 +465,10 @@ export default function App() {
   }
 
   function handleCategoryClick(catId) {
+    setPage('collection')
+    setSidebarOpen(false)
     if (catId === activeCat?.id) return
     setCategory(catId)
-    setSidebarOpen(false)
   }
 
   function toggleActiveSeriesFilter(seriesId) {
@@ -448,13 +494,16 @@ export default function App() {
 
   // Deferred delete: remove from the UI now, commit to the DB when the toast expires.
   // Undo restores the row untouched (same id, series link, source linkage).
-  function handleDelete(id) {
+  // `fallback` covers deletes from Up Next, where the entry may not be in the
+  // active category's loaded list yet.
+  function handleDelete(id, fallback = null) {
     flushPendingDelete() // only one undo in flight at a time
     const index = entries.findIndex(e => e.id === id)
-    if (index === -1) return
-    const entry = entries[index]
-    pendingDeleteRef.current = { entry, index }
+    const entry = index !== -1 ? entries[index] : fallback
+    if (!entry) return
+    pendingDeleteRef.current = { entry, index, inList: index !== -1 }
     setEntries(prev => prev.filter(e => e.id !== id))
+    setPendingDeleteId(entry.id)
     setDeleteToast({ title: entry.title })
     deleteTimerRef.current = setTimeout(flushPendingDelete, 5000)
   }
@@ -463,8 +512,11 @@ export default function App() {
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null }
     const pending = pendingDeleteRef.current
     if (pending) {
-      window.db.deleteEntry(pending.entry.id)
       pendingDeleteRef.current = null
+      Promise.resolve(window.db.deleteEntry(pending.entry.id)).then(() => {
+        setPendingDeleteId(null)
+        bumpUpNext()
+      })
     }
     setDeleteToast(null)
   }
@@ -473,40 +525,32 @@ export default function App() {
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null }
     const pending = pendingDeleteRef.current
     if (pending) {
-      const { entry, index } = pending
-      setEntries(prev => {
-        const next = [...prev]
-        next.splice(Math.min(index, next.length), 0, entry)
-        return next
-      })
+      const { entry, index, inList } = pending
+      if (inList) {
+        setEntries(prev => {
+          const next = [...prev]
+          next.splice(Math.min(index, next.length), 0, entry)
+          return next
+        })
+      }
       pendingDeleteRef.current = null
     }
+    setPendingDeleteId(null)
     setDeleteToast(null)
   }
 
   function handleUpdate(updated) {
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
     refreshSeriesList()
+    bumpUpNext()
   }
 
   // Quick +1 from a card. Reaching the total auto-completes the entry
   // (and stamps today's date if none was set).
   async function handleIncrement(entry) {
-    const total = entry.progress_total
-    const next  = total != null ? Math.min((entry.progress ?? 0) + 1, total) : (entry.progress ?? 0) + 1
-    if (next === (entry.progress ?? 0)) return
-    const done  = total != null && next >= total
-    const updated = await window.db.updateEntry({
-      id:        entry.id,
-      title:     entry.title,
-      status:    done ? 'completed' : entry.status,
-      rating:    entry.rating,
-      notes:     entry.notes,
-      series_id: entry.series_id,
-      date_read: done && !entry.date_read ? new Date().toISOString().slice(0, 10) : entry.date_read,
-      progress:  next,
-      progress_total: total,
-    })
+    const payload = progressUpdate(entry, (entry.progress ?? 0) + 1)
+    if (payload.progress === (entry.progress ?? 0)) return
+    const updated = await window.db.updateEntry(payload)
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
   }
 
@@ -602,6 +646,28 @@ export default function App() {
     })
   }
 
+  // Empty-category state: add by hand, or (for categories an importer covers)
+  // bring history in from the app the user is coming from.
+  const importNames = IMPORT_SOURCES.filter(s => s.cats.includes(activeCat?.id)).map(s => s.name)
+  const emptyLibrary = (
+    <>
+      <p>No {activeCat?.label.toLowerCase()} yet.</p>
+      <div className="empty-actions">
+        <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
+          Add your first
+        </button>
+        {importNames.length > 0 && (
+          <button
+            className="add-btn add-btn--search"
+            onClick={() => setImportOpen({ highlight: activeCat.id })}
+          >
+            {ICONS.import}&nbsp; Import from {importNames.join(' or ')}
+          </button>
+        )}
+      </div>
+    </>
+  )
+
   return (
     <div className="layout" style={{ '--accent': activeCat?.color }}>
       {/* Mobile sidebar backdrop */}
@@ -618,8 +684,20 @@ export default function App() {
             </div>
 
             <nav className="sidebar-nav">
-              {page === 'collection' && visibleCats.map(cat => {
-                const isActive = activeCat?.id === cat.id
+              {(page === 'collection' || page === 'upnext') && (
+                <button
+                  className={`nav-item nav-item--upnext ${page === 'upnext' ? 'active' : ''}`}
+                  style={{ '--accent': NEUTRAL_ACCENT }}
+                  onClick={() => { setPage('upnext'); setSidebarOpen(false) }}
+                  title="Up Next"
+                >
+                  <span className="nav-icon">{ICONS.upnext}</span>
+                  <span className="nav-label">Up Next</span>
+                  {inProgressCount > 0 && <span className="nav-count">{inProgressCount}</span>}
+                </button>
+              )}
+              {(page === 'collection' || page === 'upnext') && visibleCats.map(cat => {
+                const isActive = page === 'collection' && activeCat?.id === cat.id
                 return (
                   <button
                     key={cat.id}
@@ -754,7 +832,54 @@ export default function App() {
       </div>
 
       {/* Main */}
-      {page === 'settings' ? (
+      {page == null ? (
+        <main className="main" />
+      ) : page === 'upnext' ? (
+        <main className="main">
+          <header className="topbar" style={{ '--accent': NEUTRAL_ACCENT }}>
+            <div className="topbar-title">
+              <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
+                {ICONS.menu}
+              </button>
+              <span className="topbar-icon">{ICONS.upnext}</span>
+              <h1>Up Next</h1>
+              {inProgressCount > 0 && <span className="topbar-count">{inProgressCount}</span>}
+            </div>
+            <div className="topbar-actions">
+              <button
+                className="global-search-btn"
+                onClick={() => setGlobalSearchOpen(true)}
+                title="Search every category (Ctrl+Shift+K)"
+              >
+                {ICONS.search} Search library
+              </button>
+              <button className="add-btn" style={{ '--accent': NEUTRAL_ACCENT }} onClick={() => setImportOpen(true)}>
+                {ICONS.import}&nbsp; Import
+              </button>
+            </div>
+          </header>
+          <div className="insights-scroll">
+            <UpNextPage
+              categories={visibleCats}
+              releases={releases}
+              version={upNextVersion}
+              hiddenIds={pendingDeleteId != null ? [pendingDeleteId] : []}
+              onOpenEntry={handleUpNextOpen}
+              onEntryChanged={handleUpNextChanged}
+              onAddRelease={handleAddRelease}
+              onDismissRelease={handleDismissRelease}
+              onImport={() => setImportOpen(true)}
+              onBrowse={() => setPage('collection')}
+            />
+          </div>
+          <GlobalSearchModal
+            open={globalSearchOpen}
+            categories={visibleCats}
+            onSelect={entry => { handleGlobalSelect(entry); setPage('collection') }}
+            onClose={() => setGlobalSearchOpen(false)}
+          />
+        </main>
+      ) : page === 'settings' ? (
         <main className="main">
           <header className="topbar" style={{ '--accent': '#94a3b8' }}>
             <div className="topbar-title">
@@ -930,14 +1055,7 @@ export default function App() {
                 <div className="empty-state">
                   {query ? (
                     <p>No matches for &ldquo;{search}&rdquo;.</p>
-                  ) : (
-                    <>
-                      <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                      <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
-                        Add your first
-                      </button>
-                    </>
-                  )}
+                  ) : emptyLibrary}
                 </div>
               )}
             </div>
@@ -956,14 +1074,7 @@ export default function App() {
                 <div className="empty-state">
                   {query ? (
                     <p>No matches for &ldquo;{search}&rdquo;.</p>
-                  ) : (
-                    <>
-                      <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                      <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
-                        Add your first
-                      </button>
-                    </>
-                  )}
+                  ) : emptyLibrary}
                 </div>
               )}
             </div>
@@ -974,14 +1085,7 @@ export default function App() {
               <div className="empty-state">
                 {query ? (
                   <p>No matches for &ldquo;{search}&rdquo;.</p>
-                ) : (
-                  <>
-                    <p>No {activeCat?.label.toLowerCase()} yet.</p>
-                    <button className="add-btn" style={{ '--accent': activeCat?.color }} onClick={openAdd}>
-                      Add your first
-                    </button>
-                  </>
-                )}
+                ) : emptyLibrary}
               </div>
             )}
             {(seriesFilter != null || tagFilter != null || query
@@ -1061,16 +1165,6 @@ export default function App() {
             onAdded={handleAdded}
           />
 
-          <EditEntryPanel
-            entry={editingEntry}
-            color={activeCat?.color}
-            seriesList={seriesList}
-            onClose={() => setEditingEntry(null)}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-            onLogsChanged={handleLogsChanged}
-          />
-
           <ReleasesPanel
             open={releasesOpen}
             releases={categoryReleases}
@@ -1081,6 +1175,24 @@ export default function App() {
           />
         </main>
       )}
+
+      {/* Shared by the library and Up Next. */}
+      <EditEntryPanel
+        entry={editingEntry}
+        color={activeCat?.color}
+        seriesList={seriesList}
+        onClose={() => setEditingEntry(null)}
+        onUpdate={handleUpdate}
+        onDelete={id => handleDelete(id, editingEntry)}
+        onLogsChanged={handleLogsChanged}
+      />
+
+      {/* importOpen is false, true, or { highlight: categoryId } from an empty state. */}
+      <ImportDialog
+        open={!!importOpen}
+        highlight={importOpen?.highlight ?? null}
+        onClose={() => setImportOpen(false)}
+      />
 
       <ConfirmDialog
         open={!!seriesToDelete}
