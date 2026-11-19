@@ -4,6 +4,8 @@ const {
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries, addEntriesBatch,
   getActivity, cacheGet, cacheSet,
+  getLists, createList, updateList, deleteList,
+  getListItems, addToList, removeFromList, reorderList, setListItemNote, getEntryListIds,
 } = require('./db')
 const { getEpisodes } = require('./episodes')
 const catalog = require('./catalog')
@@ -35,6 +37,18 @@ function registerHandlers(readSettings) {
   ipcMain.handle('db:addSeries',     (_e, category, name) => addSeries(category, name))
   ipcMain.handle('db:deleteSeries',  (_e, id)       => touching(deleteSeries)(id))
   ipcMain.handle('db:renameSeries',  (_e, id, name) => touching(renameSeries)(id, name))
+
+  // Custom lists (8.1). Membership isn't embedded text, so no AI re-index.
+  ipcMain.handle('lists:getAll',      ()                         => getLists())
+  ipcMain.handle('lists:create',      (_e, payload)              => createList(payload ?? {}))
+  ipcMain.handle('lists:update',      (_e, payload)              => updateList(payload ?? {}))
+  ipcMain.handle('lists:delete',      (_e, id)                   => deleteList(id))
+  ipcMain.handle('lists:getItems',    (_e, listId)               => getListItems(listId))
+  ipcMain.handle('lists:addItems',    (_e, listId, entryIds)     => addToList(listId, entryIds ?? []))
+  ipcMain.handle('lists:removeItem',  (_e, listId, entryId)      => removeFromList(listId, entryId))
+  ipcMain.handle('lists:reorder',     (_e, listId, entryIds)     => reorderList(listId, entryIds ?? []))
+  ipcMain.handle('lists:setNote',     (_e, listId, entryId, note) => setListItemNote(listId, entryId, note))
+  ipcMain.handle('lists:forEntry',    (_e, entryId)              => getEntryListIds(entryId))
 
   // One channel per category (kept for the renderer + e2e stubs); each routes
   // through the catalog, which picks the keyed source or its keyless fallback.

@@ -17,6 +17,28 @@ contextBridge.exposeInMainWorld('db', {
   renameSeries: (id, name)       => ipcRenderer.invoke('db:renameSeries', id, name),
 })
 
+contextBridge.exposeInMainWorld('lists', {
+  getAll:     ()                         => ipcRenderer.invoke('lists:getAll'),
+  create:     (payload)                  => ipcRenderer.invoke('lists:create', payload),
+  update:     (payload)                  => ipcRenderer.invoke('lists:update', payload),
+  remove:     (id)                       => ipcRenderer.invoke('lists:delete', id),
+  getItems:   (listId)                   => ipcRenderer.invoke('lists:getItems', listId),
+  addItems:   (listId, entryIds)         => ipcRenderer.invoke('lists:addItems', listId, entryIds),
+  removeItem: (listId, entryId)          => ipcRenderer.invoke('lists:removeItem', listId, entryId),
+  reorder:    (listId, entryIds)         => ipcRenderer.invoke('lists:reorder', listId, entryIds),
+  setNote:    (listId, entryId, note)    => ipcRenderer.invoke('lists:setNote', listId, entryId, note),
+  forEntry:   (entryId)                  => ipcRenderer.invoke('lists:forEntry', entryId),
+})
+
+contextBridge.exposeInMainWorld('calendar', {
+  get:        (from, to, opts) => ipcRenderer.invoke('calendar:get', from, to, opts),
+  exportIcs:  ()               => ipcRenderer.invoke('calendar:exportIcs'),
+  syncStatus: ()               => ipcRenderer.invoke('calendar:syncStatus'),
+  startSync:  ()               => ipcRenderer.invoke('calendar:startSync'),
+  stopSync:   ()               => ipcRenderer.invoke('calendar:stopSync'),
+  syncNow:    ()               => ipcRenderer.invoke('calendar:syncNow'),
+})
+
 contextBridge.exposeInMainWorld('settings', {
   get: ()      => ipcRenderer.invoke('settings:get'),
   set: (patch) => ipcRenderer.invoke('settings:set', patch),

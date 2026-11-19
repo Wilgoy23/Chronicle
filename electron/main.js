@@ -5,6 +5,7 @@ const zlib   = require('zlib')
 const {
   initDb, getReleases, setReleaseStatus, unseenReleaseCount,
   exportData, importData, getDbPath, closeDb, validateBackupFile, backupTo,
+  getCalendarReleases, getEntries, cacheGet, cacheSet,
 } = require('./db')
 const { registerHandlers } = require('./ipc')
 const { registerAiHandlers, markLibraryDirty, shutdownAi } = require('./ai/aiService')
@@ -15,6 +16,7 @@ const { mapMal }           = require('./importers/mal')
 const { mapLetterboxdFiles, letterboxdKind } = require('./importers/letterboxd')
 const { mapStoryGraph }    = require('./importers/storygraph')
 const { fetchAniList }     = require('./importers/anilist')
+const { collectCalendar, toIcs, icsWindow } = require('./calendar')
 
 let mainWindow = null
 
@@ -43,6 +45,45 @@ function writeSettings(data) {
   fs.writeFileSync(settingsPath(), JSON.stringify(data, null, 2), 'utf8')
 }
 
+// ── Release calendar (8.2) ──────────────────────────────────────
+
+function calendarEvents(range) {
+  return collectCalendar(range, {
+    getCalendarReleases, getEntries, cacheGet, cacheSet, settings: readSettings(),
+  })
+}
+
+async function buildIcs() {
+  const events = await calendarEvents(icsWindow())
+  return { text: toIcs(events), count: events.length }
+}
+
+// The "keep a file updated" option: rewrite the user's chosen .ics (often in a
+// synced folder) at launch, after each release scan, and on demand.
+async function syncCalendarFile() {
+  const cal = readSettings().calendar ?? {}
+  if (!cal.icsPath) return { ok: false, error: 'No calendar file chosen.' }
+  let result
+  try {
+    const { text, count } = await buildIcs()
+    fs.writeFileSync(cal.icsPath, text, 'utf8')
+    result = { ok: true, path: cal.icsPath, count, at: new Date().toISOString() }
+  } catch (err) {
+    result = { ok: false, path: cal.icsPath, error: String(err.message ?? err) }
+  }
+  const next = readSettings()
+  writeSettings({
+    ...next,
+    calendar: { ...(next.calendar ?? {}), lastSynced: result.ok ? result.at : (next.calendar?.lastSynced ?? null), lastError: result.ok ? null : result.error },
+  })
+  return result
+}
+
+function calendarSyncStatus() {
+  const cal = readSettings().calendar ?? {}
+  return { path: cal.icsPath ?? null, lastSynced: cal.lastSynced ?? null, lastError: cal.lastError ?? null }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
@@ -65,7 +106,9 @@ function createWindow() {
 
   // Scan for new releases shortly after the UI is ready (throttled to once/day).
   win.webContents.once('did-finish-load', () => {
-    performScan({ force: false }).catch(err => console.error('[releases] scan failed:', err))
+    performScan({ force: false })
+      .catch(err => console.error('[releases] scan failed:', err))
+      .finally(() => { if (readSettings().calendar?.icsPath) syncCalendarFile() })
     // Build/refresh the local AI embedding index in the background.
     markLibraryDirty()
   })
@@ -112,7 +155,56 @@ app.whenReady().then(() => {
 
   ipcMain.handle('releases:get',       () => ({ items: getReleases(), unseen: unseenReleaseCount() }))
   ipcMain.handle('releases:setStatus', (_e, id, status) => setReleaseStatus(id, status))
-  ipcMain.handle('releases:checkNow',  () => performScan({ force: true }))
+  ipcMain.handle('releases:checkNow',  async () => {
+    const fresh = await performScan({ force: true })
+    if (readSettings().calendar?.icsPath) await syncCalendarFile()
+    return fresh
+  })
+
+  ipcMain.handle('calendar:get', (_e, from, to, opts) =>
+    calendarEvents({ from, to, episodes: opts?.episodes !== false }))
+
+  ipcMain.handle('calendar:exportIcs', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export calendar',
+      defaultPath: `chronicle-calendar-${dateStamp()}.ics`,
+      filters: [{ name: 'iCalendar', extensions: ['ics'] }],
+    })
+    if (canceled || !filePath) return { ok: false, canceled: true }
+    try {
+      const { text, count } = await buildIcs()
+      fs.writeFileSync(filePath, text, 'utf8')
+      return { ok: true, path: filePath, count }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('calendar:syncStatus', () => calendarSyncStatus())
+
+  ipcMain.handle('calendar:startSync', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Choose where to keep your calendar file',
+      defaultPath: 'chronicle.ics',
+      filters: [{ name: 'iCalendar', extensions: ['ics'] }],
+    })
+    if (canceled || !filePath) return { ok: false, canceled: true }
+    const next = readSettings()
+    writeSettings({ ...next, calendar: { ...(next.calendar ?? {}), icsPath: filePath } })
+    const res = await syncCalendarFile()
+    return { ...res, ...calendarSyncStatus() }
+  })
+
+  ipcMain.handle('calendar:stopSync', () => {
+    const next = readSettings()
+    writeSettings({ ...next, calendar: { ...(next.calendar ?? {}), icsPath: null, lastSynced: null, lastError: null } })
+    return calendarSyncStatus()
+  })
+
+  ipcMain.handle('calendar:syncNow', async () => {
+    const res = await syncCalendarFile()
+    return { ...res, ...calendarSyncStatus() }
+  })
 
   ipcMain.handle('data:exportJson', async () => {
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
