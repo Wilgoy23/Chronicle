@@ -13,6 +13,8 @@ import SettingsPage from './components/SettingsPage'
 import ReleasesPanel from './components/ReleasesPanel'
 import InsightsPage from './components/InsightsPage'
 import UpNextPage from './components/UpNextPage'
+import ListsPage from './components/ListsPage'
+import CalendarPage from './components/CalendarPage'
 import ImportDialog, { IMPORT_SOURCES } from './components/ImportDialog'
 import { progressUpdate } from './progress'
 
@@ -60,6 +62,8 @@ export const ICONS = {
   sort:     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="18" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>,
   upnext:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>,
   import:   <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  lists:    <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4h10a1 1 0 0 1 1 1v15l-6-3.5L8 20V5a1 1 0 0 1 1-1z"/><path d="M5 8v13"/></svg>,
+  calendar: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/><rect x="7" y="13" width="3" height="3" rx="0.5" fill="currentColor" stroke="none"/></svg>,
   insights: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="21" x2="21" y2="21"/><rect x="5" y="11" width="3.4" height="7"/><rect x="10.3" y="6" width="3.4" height="12"/><rect x="15.6" y="14" width="3.4" height="4"/></svg>,
   fallback: <svg width={S} height={S} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>,
 }
@@ -174,6 +178,15 @@ function groupEntries(entries, allSeries = []) {
 }
 
 const NEUTRAL_ACCENT = '#94a3b8'
+
+// Pages that show the full navigation rail (categories + daily views).
+const MAIN_PAGES = new Set(['collection', 'upnext', 'lists', 'calendar'])
+// Cross-category pages, each with its own nav item and neutral topbar.
+const OVERVIEW_PAGES = [
+  { id: 'upnext',   label: 'Up Next',  icon: 'upnext' },
+  { id: 'lists',    label: 'Lists',    icon: 'lists' },
+  { id: 'calendar', label: 'Calendar', icon: 'calendar' },
+]
 
 export default function App() {
   // null until the boot check below picks the landing page.
@@ -684,19 +697,21 @@ export default function App() {
             </div>
 
             <nav className="sidebar-nav">
-              {(page === 'collection' || page === 'upnext') && (
+              {MAIN_PAGES.has(page) && OVERVIEW_PAGES.map(p => (
                 <button
-                  className={`nav-item nav-item--upnext ${page === 'upnext' ? 'active' : ''}`}
+                  key={p.id}
+                  className={`nav-item nav-item--${p.id} ${page === p.id ? 'active' : ''}`}
                   style={{ '--accent': NEUTRAL_ACCENT }}
-                  onClick={() => { setPage('upnext'); setSidebarOpen(false) }}
-                  title="Up Next"
+                  onClick={() => { setPage(p.id); setSidebarOpen(false) }}
+                  title={p.label}
                 >
-                  <span className="nav-icon">{ICONS.upnext}</span>
-                  <span className="nav-label">Up Next</span>
-                  {inProgressCount > 0 && <span className="nav-count">{inProgressCount}</span>}
+                  <span className="nav-icon">{ICONS[p.icon]}</span>
+                  <span className="nav-label">{p.label}</span>
+                  {p.id === 'upnext' && inProgressCount > 0 && <span className="nav-count">{inProgressCount}</span>}
                 </button>
-              )}
-              {(page === 'collection' || page === 'upnext') && visibleCats.map(cat => {
+              ))}
+              {MAIN_PAGES.has(page) && <div className="nav-divider" role="separator" />}
+              {MAIN_PAGES.has(page) && visibleCats.map(cat => {
                 const isActive = page === 'collection' && activeCat?.id === cat.id
                 return (
                   <button
@@ -871,6 +886,51 @@ export default function App() {
               onImport={() => setImportOpen(true)}
               onBrowse={() => setPage('collection')}
             />
+          </div>
+          <GlobalSearchModal
+            open={globalSearchOpen}
+            categories={visibleCats}
+            onSelect={entry => { handleGlobalSelect(entry); setPage('collection') }}
+            onClose={() => setGlobalSearchOpen(false)}
+          />
+        </main>
+      ) : page === 'lists' || page === 'calendar' ? (
+        <main className="main">
+          <header className="topbar" style={{ '--accent': NEUTRAL_ACCENT }}>
+            <div className="topbar-title">
+              <button className="mobile-menu-btn" onClick={() => setSidebarOpen(s => !s)} aria-label="Menu">
+                {ICONS.menu}
+              </button>
+              <span className="topbar-icon">{ICONS[page]}</span>
+              <h1>{page === 'lists' ? 'Lists' : 'Calendar'}</h1>
+            </div>
+            <div className="topbar-actions">
+              <button
+                className="global-search-btn"
+                onClick={() => setGlobalSearchOpen(true)}
+                title="Search every category (Ctrl+Shift+K)"
+              >
+                {ICONS.search} Search library
+              </button>
+            </div>
+          </header>
+          <div className="insights-scroll" style={{ '--accent': NEUTRAL_ACCENT }}>
+            {page === 'lists' ? (
+              <ListsPage
+                categories={visibleCats}
+                version={upNextVersion}
+                hiddenIds={pendingDeleteId != null ? [pendingDeleteId] : []}
+                onOpenEntry={handleUpNextOpen}
+              />
+            ) : (
+              <CalendarPage
+                categories={visibleCats}
+                version={upNextVersion}
+                onOpenEntry={handleUpNextOpen}
+                onAddRelease={handleAddRelease}
+                onDismissRelease={handleDismissRelease}
+              />
+            )}
           </div>
           <GlobalSearchModal
             open={globalSearchOpen}
@@ -1185,6 +1245,7 @@ export default function App() {
         onUpdate={handleUpdate}
         onDelete={id => handleDelete(id, editingEntry)}
         onLogsChanged={handleLogsChanged}
+        onListsChanged={bumpUpNext}
       />
 
       {/* importOpen is false, true, or { highlight: categoryId } from an empty state. */}

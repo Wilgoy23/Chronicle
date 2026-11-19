@@ -728,7 +728,7 @@ function DataSection() {
       <div className="data-actions">
         <h3>Export &amp; backup</h3>
         <p className="settings-desc">
-          JSON is a full snapshot (entries, series, re-watch logs and activity); CSV is a
+          JSON is a full snapshot (entries, series, lists, re-watch logs and activity); CSV is a
           spreadsheet of entries; a database backup can be restored later to replace your library.
           Importing merges entries in, skipping ones you already have — from a Chronicle JSON
           export, or from Goodreads, StoryGraph, AniList, MyAnimeList or Letterboxd.

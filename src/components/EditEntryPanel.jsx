@@ -38,7 +38,7 @@ function logNoun(category) {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-export default function EditEntryPanel({ entry, color, seriesList = [], onClose, onUpdate, onDelete, onLogsChanged }) {
+export default function EditEntryPanel({ entry, color, seriesList = [], onClose, onUpdate, onDelete, onLogsChanged, onListsChanged }) {
   const [form, setForm]     = useState(null)
   const [saving, setSaving] = useState(false)
   const [logs, setLogs]     = useState([])
@@ -346,6 +346,13 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
               />
             </label>
 
+            {window.lists && (
+              <>
+                <div className="edit-section-label edit-section-label--extra">Lists</div>
+                <EntryLists entryId={entry.id} onChanged={onListsChanged} />
+              </>
+            )}
+
             <div className="edit-section-label edit-section-label--extra">History</div>
 
             <div className="edit-log-list">
@@ -442,6 +449,98 @@ export default function EditEntryPanel({ entry, color, seriesList = [], onClose,
           </div>
         </form>
       </aside>
+    </div>
+  )
+}
+
+// Which custom lists (8.1) this entry is on. Changes apply immediately rather
+// than on Save: membership lives with the list, not the entry's fields.
+function EntryLists({ entryId, onChanged }) {
+  const [lists, setLists]     = useState([])
+  const [memberOf, setMemberOf] = useState([])
+  const [adding, setAdding]   = useState(false)
+  const [newName, setNewName] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([window.lists.getAll(), window.lists.forEntry(entryId)]).then(([all, ids]) => {
+      if (cancelled) return
+      setLists(all)
+      setMemberOf(ids)
+    })
+    return () => { cancelled = true }
+  }, [entryId])
+
+  async function add(listId) {
+    await window.lists.addItems(listId, [entryId])
+    setMemberOf(prev => [...prev, listId])
+    onChanged?.()
+  }
+
+  async function remove(listId) {
+    await window.lists.removeItem(listId, entryId)
+    setMemberOf(prev => prev.filter(id => id !== listId))
+    onChanged?.()
+  }
+
+  async function createAndAdd() {
+    const name = newName.trim()
+    if (!name) return
+    const created = await window.lists.create({ name })
+    if (!created || created.error) return
+    setLists(prev => [...prev, created])
+    await add(created.id)
+    setNewName('')
+    setAdding(false)
+  }
+
+  const on  = lists.filter(l => memberOf.includes(l.id))
+  const off = lists.filter(l => !memberOf.includes(l.id))
+
+  return (
+    <div className="entry-lists">
+      {on.length > 0 && (
+        <div className="entry-lists-chips">
+          {on.map(l => (
+            <span key={l.id} className="entry-list-chip">
+              {l.name}
+              <button type="button" onClick={() => remove(l.id)} aria-label={`Remove from ${l.name}`} title={`Remove from ${l.name}`}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {adding ? (
+        <div className="entry-lists-new">
+          <input
+            autoFocus
+            className="edit-input"
+            placeholder="New list name"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); createAndAdd() }
+              if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); setNewName('') }
+            }}
+          />
+          <button type="button" className="submit-btn edit-log-add" onClick={createAndAdd} disabled={!newName.trim()}>Create</button>
+          <button type="button" className="edit-log-cancel" onClick={() => { setAdding(false); setNewName('') }}>Cancel</button>
+        </div>
+      ) : (
+        <select
+          className="edit-input entry-lists-select"
+          value=""
+          onChange={e => {
+            const v = e.target.value
+            if (v === '__new') setAdding(true)
+            else if (v) add(Number(v))
+          }}
+          aria-label="Add to a list"
+        >
+          <option value="">{on.length ? 'Add to another list…' : 'Add to a list…'}</option>
+          {off.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          <option value="__new">+ New list…</option>
+        </select>
+      )}
     </div>
   )
 }
