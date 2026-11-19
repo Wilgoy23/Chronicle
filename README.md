@@ -9,7 +9,11 @@ data never leaves your machine.
 - **Categories** — Books, Anime, Manga, Movies, TV Shows, and Games out of the box, plus fully
   custom categories with their own name/icon/color
 - **Add via search** — look up titles through Hardcover (books), AniList (anime/manga), TMDB
-  (movies/TV), and RAWG (games), or add entries manually
+  (movies/TV), and RAWG (games), or add entries manually. No keys needed to start: books fall
+  back to Open Library and TV to TVmaze until you add a Hardcover token / TMDB key
+- **Up Next** — what you're in the middle of, one-click progress, episode lists, and the next
+  installment of series you've started
+- **Import** — from Goodreads, StoryGraph, AniList (by username), MyAnimeList, or Letterboxd
 - **Track status** — completed, in progress (with page/episode/hour progress), or planned
 - **Ratings, notes, cover art, series groupings, and tags/genres**
 - **Re-watch / re-read logs** — track every rewatch or reread of a title, not just the first

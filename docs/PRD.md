@@ -1,7 +1,7 @@
 # Chronicle — Product Requirements & Roadmap
 
 > Living document. Update the **Status** column / checkboxes as work lands.
-> Last updated: 2026-07-27
+> Last updated: 2026-11-18
 
 **Status legend:** `⬜ Not started` · `🟨 In progress` · `✅ Done` · `🚫 Won't do`
 
@@ -38,6 +38,12 @@ This document tracks planned UX fixes and features, grouped into milestones. Eac
 | 5.5 | Compact list view | M5 | P3 | ✅ |
 | 5.6 | Light theme | M5 | P3 | ✅ |
 | 5.7 | Smarter duplicate detection | M5 | P3 | ✅ |
+| 7.1 | Works without API keys (keyless sources + bundled keys) | M7 | P0 | ✅ |
+| 7.2 | Progress activity history + episode grid | M7 | P1 | ✅ |
+| 7.3 | Up Next page | M7 | P0 | ✅ |
+| 7.4 | Import expansion (AniList, StoryGraph, richer Goodreads/Letterboxd) | M7 | P0 | ✅ |
+
+*(Milestone 6 lives in [PRD-followups.md](./PRD-followups.md).)*
 
 ---
 
@@ -587,6 +593,87 @@ fallback; `allowDuplicate` bypass; `findDuplicate` prefers source over a title c
 
 ---
 
+## Milestone 7 — Onboarding & daily use
+
+Goal: from a comparison with other trackers (Yamtrack, Tonkatsu Box, Sofa, Trakt…). New users
+should get from install to a populated, searchable library in minutes without API keys, and
+returning users should land on what they're in the middle of.
+
+### 7.1 Works without API keys — ✅ Done `P0`
+
+- [x] Book search falls back to **Open Library** and TV search to **TVmaze** (both keyless) when no
+      Hardcover token / TMDB key is available; anime/manga already used keyless AniList
+- [x] Optional **bundled** TMDB/RAWG keys for release builds; the user's own key always wins
+- [x] Each entry records the source its id came from, so mixed-source libraries keep working
+
+**Implementation notes:**
+- `electron/keys.js` — `effectiveKeys(settings)`: user key → bundled key (`electron/bundled-keys.json`,
+  git-ignored, written by `release.yml` from `CHRONICLE_TMDB_KEY` / `CHRONICLE_RAWG_KEY` secrets when
+  set; `CHRONICLE_TMDB_KEY`/`CHRONICLE_RAWG_KEY` env vars in dev) → none. Hardcover is never bundled
+  (per-account token). Bundled keys are extractable from the app — only use keys that are fine to
+  treat as public. RAWG's free tier is a per-key monthly quota shared by every user of a bundled key.
+- `electron/catalog.js` — per-category provider list in preference order; `search()` tags each result
+  with its `source`; `lookupReleases(entry)` dispatches on the entry's *own* source;
+  `sourcesSummary()` drives Settings → API Keys, which now shows the active source per category.
+- The per-category `api:search*` IPC channels are unchanged (e2e stubs rely on them) and route
+  through the catalog. "In Library" checks are keyed on `source:id` (`src/sources.js`).
+- Open Library results carry `pages` → `progress_total`. "Add series…" is hidden for Open Library
+  results (no series data); TVmaze gets its own season lookup + release detection.
+- Fix along the way: search-adds only stamp `date_read` for **Completed** adds (planned/in-progress
+  adds used to get today's date, which then stuck as the finish date on auto-complete).
+
+### 7.2 Progress activity history + episode grid — ✅ Done `P1`
+
+- [x] `activity` table: one dated row per progress and/or status change, written by `updateEntry`
+      (so card +1, edit panel, episode grid and Up Next are all captured); `last_activity` on every entry
+- [x] Edit panel "Activity" list ("Nov 3 · +36 pages (now 148)", "Started", "Finished")
+- [x] Episode grid for TV (TMDB or TVmaze) and anime (AniList): season tabs, titles/air dates,
+      unaired episodes dimmed, next-episode line
+- [x] Activity included in JSON export/import (remapped like logs; older exports import fine)
+
+**Implementation notes:** `electron/episodes.js` (TMDB whole-show lists batch seasons via
+`append_to_response`, ≤20 per call; TVmaze is one call; AniList gives count + next airing).
+Results cached 12h in `media_cache`, with stale data served when offline. Progress counts
+episodes in watch order ("watched through"), matching the existing integer `progress`; clicking an
+episode marks everything up to it, clicking a watched one un-watches from there. Shared
+start/finish/reopen rules live in `src/progress.js`. Manga/books stay numeric (with dated activity).
+
+### 7.3 Up Next page — ✅ Done `P0`
+
+- [x] New sidebar page: **Continue** (in-progress, most recent activity first, +1 / page input /
+      Done, next-episode line with air dates), **Next in your series** (first planned installment
+      of series you've finished part of and aren't mid-way through), **From series you follow**
+      (releases out now / within 60 days), **On the back burner** (no activity in 30+ days)
+- [x] Landing page is Up Next when anything is in progress, else the library
+- [x] Empty states point new users to import
+
+**Implementation notes:** selection logic is pure in `src/upNext.js` (unit-tested). The edit panel
+is now shared between the library and Up Next; deletes from Up Next go through the same undo
+toast (`handleDelete(id, fallback)`, entry hidden via `pendingDeleteId` until committed).
+
+### 7.4 Import expansion — ✅ Done `P0`
+
+- [x] **AniList by username** (public lists; no file, no key) — entries keep AniList ids, so releases,
+      series lookup and the episode grid work immediately; `repeat` → re-watch logs
+- [x] **StoryGraph CSV** (status incl. DNF/paused, quarter-star ratings, review, tags, read count)
+- [x] **Goodreads**: series from "Title (Series, #N)", year, page count, read count → re-read logs,
+      personal shelves → tags
+- [x] **Letterboxd**: repeat diary rows collapse into one entry + re-watch logs (previously later
+      watches were dropped as duplicates); also ratings/watched/watchlist CSVs, several at once
+- [x] One **Import dialog** (Up Next topbar, Settings → Data, category empty states) with per-source steps
+- [x] `importData` also dedupes on `source + source_id` (titles differ across sources)
+
+**Known risk (same as 6.6):** the StoryGraph mapper and the new Letterboxd file kinds are built from
+documented column names, not verified against real downloaded exports.
+
+**Verification (7.1–7.4).** `npm test` → **393/393 pass** (+87 across `catalog`, `activity`,
+`episodes`, `progress`, `upNext`, `importers2` test files). `vite build` clean. Playwright e2e
+(`app`, `seriesAdd`, `aiActions`, `aiPanel`) → **20/20 pass**. New screens checked by launching the
+built app with seeded data (Up Next, episode grid against live TVmaze/AniList, import dialog,
+keyless Open Library search).
+
+---
+
 ## Out of scope (for now)
 
 - Cloud sync / accounts — Chronicle is deliberately local-first
@@ -619,3 +706,4 @@ fallback; `allowDuplicate` bypass; `findDuplicate` prefers source over a title c
 | 2026-07-27 | 5.5 Compact list view (`ListView.jsx` — dense sorted rows: cover/title/series/status/rating/date, +1 & delete parity; third `list` toggle; view preference persisted globally) — renderer-only, build clean |
 | 2026-07-27 | 5.6 Light theme (`:root[data-theme=light]` palette swap + `color-scheme`; `--text-strong`/`--raise`/`--glass-bg` tokens replace dark-only white literals; `theme.js` persistence + no-flash boot; Appearance section in Settings) — renderer-only, build clean |
 | 2026-07-27 | 5.7 Smarter duplicate detection (`year` column; tiered `findDuplicate` source+source_id → title+year → title, category-scoped; `allowDuplicate` "Add anyway" in manual + search; source_id-based "In Library" gate) — **Milestone 5 complete** — 129/129 tests |
+| 2026-11-18 | Milestone 7: 7.1 keyless sources (Open Library / TVmaze fallback, bundled keys), 7.2 activity history + episode grid, 7.3 Up Next page, 7.4 AniList/StoryGraph import + richer Goodreads/Letterboxd + import dialog — 393/393 unit, 20/20 e2e |
