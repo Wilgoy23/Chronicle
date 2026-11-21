@@ -106,9 +106,16 @@ describe('mapStoryGraph', () => {
     const [e] = mapStoryGraph(csv).entries
     expect(e).toMatchObject({
       category: 'book', title: 'Piranesi', status: 'completed', rating: 9,
-      notes: 'By Susanna Clarke\n\nLoved it', genres: 'fantasy',
+      notes: 'By Susanna Clarke', review: 'Loved it', genres: 'fantasy',
       date_read: '2023-05-12', created_at: '2023-01-01 00:00:00',
     })
+  })
+
+  it('maps Format and Owned? onto format and ownership', () => {
+    const csv = 'Title,Format,Owned?\nA,audio,Yes\nB,digital,No\nC,paperback,\nD,,'
+    expect(mapStoryGraph(csv).entries.map(e => [e.format, e.ownership])).toEqual([
+      ['audiobook', 'owned'], ['ebook', undefined], ['physical', undefined], [undefined, undefined],
+    ])
   })
 
   it('maps every read status', () => {

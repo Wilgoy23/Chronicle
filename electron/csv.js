@@ -4,6 +4,7 @@ const CSV_COLUMNS = [
   'id', 'category', 'title', 'series', 'status', 'rating',
   'progress', 'progress_total', 'date_read', 'notes', 'description',
   'cover_url', 'source', 'source_id', 'created_at',
+  'genres', 'format', 'platform', 'ownership', 'review', 'review_spoilers',
 ]
 
 function csvCell(v) {

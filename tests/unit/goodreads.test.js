@@ -56,4 +56,18 @@ describe('mapGoodreads', () => {
     expect(entry.status).toBe('completed')
     expect(entry.date_read).toBeNull()
   })
+
+  it('keeps the review apart from notes, with its spoiler flag', () => {
+    const csv = 'Title,Author,My Review,Spoiler,Private Notes,Exclusive Shelf\nDune,Frank Herbert,Paul wins,true,Lent to Sam,read'
+    expect(mapGoodreads(csv).entries[0]).toMatchObject({
+      notes: 'By Frank Herbert\n\nLent to Sam', review: 'Paul wins', review_spoilers: 1,
+    })
+  })
+
+  it('maps Binding to a format and Owned Copies to ownership', () => {
+    const csv = 'Title,Binding,Owned Copies,Exclusive Shelf\nA,Kindle Edition,0,read\nB,Audible Audio,1,read\nC,Hardcover,2,to-read\nD,Unknown Binding,0,read'
+    expect(mapGoodreads(csv).entries.map(e => [e.format, e.ownership])).toEqual([
+      ['ebook', undefined], ['audiobook', 'owned'], ['physical', 'owned'], [undefined, undefined],
+    ])
+  })
 })

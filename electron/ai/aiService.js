@@ -61,6 +61,7 @@ function entryText(e) {
     e.year,
     e.description ? String(e.description).slice(0, 600) : null,
     e.notes ? String(e.notes).slice(0, 600) : null,
+    e.review ? String(e.review).slice(0, 600) : null,
   ].filter(Boolean).join('. ')
 }
 
@@ -202,7 +203,8 @@ function llmFilterPrompt(query, { categories, genres }) {
     'Convert the user query about their personal media library into a JSON filter.',
     'Return ONLY JSON with these keys (use null when not specified):',
     '{"category": string|null, "status": "completed"|"in_progress"|"planned"|null,',
-    ' "ratingMin": 1-10|null, "ratingMax": 1-10|null, "unrated": boolean,',
+    ' "ratingMin": 1-10|null, "ratingMax": 1-10|null, "unrated": boolean,  // 5 stars = 10, half stars allowed',
+    ' "ownership": "owned"|"wishlist"|null, "format": "physical"|"ebook"|"audiobook"|"digital"|null,',
     ' "yearMin": int|null, "yearMax": int|null,  // release year',
     ' "dateYearMin": int|null, "dateYearMax": int|null,  // year the user watched/read/played it',
     ' "genres": string[], "text": string  // text = remaining thematic search phrase, may be ""',

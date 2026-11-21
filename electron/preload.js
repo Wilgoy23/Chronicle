@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('db', {
   addEntriesBatch: (payload)     => ipcRenderer.invoke('db:addEntriesBatch', payload),
   updateEntry:  (entry)          => ipcRenderer.invoke('db:updateEntry',  entry),
   deleteEntry:  (id)             => ipcRenderer.invoke('db:deleteEntry',  id),
+  bulkUpdate:   (payload)        => ipcRenderer.invoke('db:bulkUpdate',   payload),
+  deleteEntries: (ids)           => ipcRenderer.invoke('db:deleteEntries', ids),
   getLogs:           (entryId)   => ipcRenderer.invoke('db:getLogs',           entryId),
   getLogsByCategory: (category)  => ipcRenderer.invoke('db:getLogsByCategory', category),
   addLog:            (log)       => ipcRenderer.invoke('db:addLog',            log),

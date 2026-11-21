@@ -42,6 +42,36 @@ describe('parseQuery — status', () => {
   })
 })
 
+describe('parseQuery — your copy', () => {
+  it('reads wishlist as ownership, not status', () => {
+    const f = parse('games on my wishlist')
+    expect(f).toMatchObject({ ownership: 'wishlist', status: null, category: 'game' })
+    expect(f.text).toBe('')
+  })
+
+  it('reads owned and formats', () => {
+    expect(parse('movies I own')).toMatchObject({ ownership: 'owned', category: 'movie' })
+    expect(parse('owned audiobooks')).toMatchObject({ ownership: 'owned', format: 'audiobook', category: 'book' })
+    expect(parse('audio books I finished')).toMatchObject({ format: 'audiobook', category: 'book', status: 'completed' })
+    expect(parse('ebooks')).toMatchObject({ format: 'ebook', category: 'book' })
+    expect(parse('physical copies of anime')).toMatchObject({ format: 'physical', category: 'anime' })
+  })
+
+  it('filters, describes and removes ownership and format', () => {
+    const entries = [
+      { id: 1, category: 'book', status: 'completed', format: 'audiobook', ownership: 'owned', genres: '' },
+      { id: 2, category: 'book', status: 'completed', format: 'ebook', ownership: 'wishlist', genres: '' },
+      { id: 3, category: 'book', status: 'completed', format: null, ownership: null, genres: '' },
+    ]
+    const f = parse('owned audiobooks')
+    expect(applyFilter(entries, f).map(e => e.id)).toEqual([1])
+    expect(describeFilter(f, CATS).map(c => c.key)).toEqual(expect.arrayContaining(['ownership', 'format']))
+    expect(removeFilterKey(removeFilterKey(f, 'format'), 'ownership')).toMatchObject({ format: null, ownership: null })
+    expect(sanitizeFilter({ ownership: 'stolen', format: 'audiobook' }, { categories: CATS }))
+      .toMatchObject({ ownership: null, format: 'audiobook' })
+  })
+})
+
 describe('parseQuery — ratings', () => {
   it('parses "8+" and "or higher" as a minimum', () => {
     expect(parse('anime rated 8+').ratingMin).toBe(8)
@@ -68,6 +98,13 @@ describe('parseQuery — ratings', () => {
   it('maps star scales onto 10', () => {
     expect(parse('5 star books').ratingMin).toBe(10)
     expect(parse('4 stars movies').ratingMin).toBe(8)
+  })
+
+  it('maps half stars without splitting the decimal', () => {
+    expect(parse('films at least 3.5 stars').ratingMin).toBe(7)
+    expect(parse('books 4.5 stars or more').ratingMin).toBe(9)
+    expect(parse('anime 2.5★').ratingMin).toBe(5)
+    expect(parse('films at least 3.5 stars').ratingMax).toBeNull()
   })
 
   it('detects unrated', () => {

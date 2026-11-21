@@ -1,6 +1,6 @@
 const { ipcMain } = require('electron')
 const {
-  getEntries, addEntry, updateEntry, deleteEntry,
+  getEntries, addEntry, updateEntry, deleteEntry, bulkUpdateEntries, deleteEntries,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries, addEntriesBatch,
   getActivity, cacheGet, cacheSet,
@@ -28,6 +28,8 @@ function registerHandlers(readSettings) {
   ipcMain.handle('db:updateEntry',   (_e, entry)    => touching(updateEntry)(entry))
   ipcMain.handle('db:addEntriesBatch', (_e, payload) => touching(addEntriesBatch)(payload))
   ipcMain.handle('db:deleteEntry',   (_e, id)       => touching(deleteEntry)(id))
+  ipcMain.handle('db:bulkUpdate',    (_e, payload)  => touching(bulkUpdateEntries)(payload ?? {}))
+  ipcMain.handle('db:deleteEntries', (_e, ids)      => touching(deleteEntries)(Array.isArray(ids) ? ids : []))
   ipcMain.handle('db:getLogs',          (_e, entryId)  => getLogs(entryId))
   ipcMain.handle('db:getLogsByCategory', (_e, category) => getLogsByCategory(category))
   ipcMain.handle('db:addLog',           (_e, log)      => addLog(log))

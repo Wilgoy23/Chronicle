@@ -45,6 +45,8 @@ function parseQuery(query, { categories = [], genres = [], now = new Date() } = 
     yearMax:   null,
     dateYearMin: null, // consumption year (date_read / created_at)
     dateYearMax: null,
+    ownership: null,   // owned | wishlist
+    format:    null,   // physical | ebook | audiobook | digital
     genres:    [],
     text:      '',
   }
@@ -61,13 +63,25 @@ function parseQuery(query, { categories = [], genres = [], now = new Date() } = 
 
   const hasConsumeVerb = CONSUME_VERBS.test(q)
 
+  // ── Your copy (before categories, so "audio books" isn't read as books) ──
+  consume(/\b(?:audio\s*books?|audible)\b/g, () => { filter.format = 'audiobook' })
+  consume(/\b(?:e-?books?|kindle)\b/g,       () => { filter.format ??= 'ebook' })
+  consume(/\b(?:physical(?:\s+cop(?:y|ies))?|hard\s*cop(?:y|ies)|paperbacks?|hardcovers?|print)\b/g,
+    () => { filter.format ??= 'physical' })
+  consume(/\bdigital(?:\s+cop(?:y|ies))?\b/g, () => { filter.format ??= 'digital' })
+  if ((filter.format === 'audiobook' || filter.format === 'ebook') && categories.some(c => c.id === 'book')) {
+    filter.category = 'book'
+  }
+  consume(/\b(?:on\s+my\s+)?wish\s*-?lists?(?:ed)?\b/g, () => { filter.ownership = 'wishlist' })
+  consume(/\b(?:(?:that\s+)?i\s+own|owned|in\s+my\s+collection)\b/g, () => { filter.ownership ??= 'owned' })
+
   // ── Category ───────────────────────────────────────────────────
   for (const cat of categories) {
     const words = CATEGORY_WORDS[cat.id] ?? [cat.label.toLowerCase()]
     // Longest synonym first so "tv shows" wins over "shows".
     for (const w of [...words].sort((a, b) => b.length - a.length)) {
       const re = new RegExp(`\\b${escapeRe(w)}\\b`)
-      if (re.test(q) && !filter.category) {
+      if (re.test(q) && (!filter.category || filter.category === cat.id)) {
         filter.category = cat.id
         consume(new RegExp(`\\b${escapeRe(w)}\\b`, 'g'))
       }
@@ -77,7 +91,7 @@ function parseQuery(query, { categories = [], genres = [], now = new Date() } = 
   // ── Status ─────────────────────────────────────────────────────
   consume(/\b(?:in.progress|currently\s+(?:reading|watching|playing)|still\s+(?:reading|watching|playing))\b/g,
     () => { filter.status = 'in_progress' })
-  consume(/\b(?:planned|plan\s+to\s+\w+|backlog|wishlist|want\s+to\s+\w+|to.read|to.watch|to.play)\b/g,
+  consume(/\b(?:planned|plan\s+to\s+\w+|backlog|want\s+to\s+\w+|to.read|to.watch|to.play)\b/g,
     () => { if (!filter.status) filter.status = 'planned' })
   consume(/\b(?:completed|finished|done\s+with)\b/g,
     () => { if (!filter.status) filter.status = 'completed' })
@@ -85,6 +99,10 @@ function parseQuery(query, { categories = [], genres = [], now = new Date() } = 
   // ── Rating ─────────────────────────────────────────────────────
   consume(/\b(?:unrated|not\s+rated|no\s+rating|without\s+a?\s*rating)\b/g,
     () => { filter.unrated = true })
+  // "5 stars", "at least 3.5 stars" — star scales are ½–5, ratings here are
+  // 1–10. Runs first so the decimal isn't split by the plain-number rules.
+  consume(/\b(?:(?:at\s+least|min(?:imum)?)\s+)?([1-5](?:\.5)?|0\.5)\s*stars?(?:\s+(?:or\s+(?:more|higher|better|above)|and\s+up))?\b|\b([1-5](?:\.5)?)\s*★/g,
+    (a, b) => { filter.ratingMin = Math.max(1, Math.round(Number(a ?? b) * 2)) })
   // "8+", "8 or higher", "rated 8 and up" (no \b after "+" — it's a non-word char)
   consume(/\b(?:rated\s+)?(10|[1-9])\s*(?:\+|or\s+(?:higher|better|above|more)\b|and\s+up\b)/g,
     n => { filter.ratingMin = Number(n) })
@@ -103,9 +121,6 @@ function parseQuery(query, { categories = [], genres = [], now = new Date() } = 
     n => { filter.ratingMin = Number(n); filter.ratingMax = Number(n) })
   consume(/\b(10|[1-9])\s*\/\s*10\b/g,
     n => { filter.ratingMin = Number(n); filter.ratingMax = Number(n) })
-  // "5 stars" — star scales are 1–5, ratings here are 1–10.
-  consume(/\b([1-5])\s*stars?\b/g,
-    n => { filter.ratingMin = Number(n) * 2 })
   // Sentiment shortcuts
   consume(/\b(?:favou?rites?|best|top.rated|highly.rated|loved|amazing)\b/g,
     () => { if (filter.ratingMin == null) filter.ratingMin = 8 })
@@ -192,6 +207,8 @@ function sanitizeFilter(raw, { categories = [], genres = [], dropFullRangeBounds
     yearMax:     int(raw.yearMax, 1000, 3000),
     dateYearMin: int(raw.dateYearMin, 1000, 3000),
     dateYearMax: int(raw.dateYearMax, 1000, 3000),
+    ownership: ['owned', 'wishlist'].includes(raw.ownership) ? raw.ownership : null,
+    format:    ['physical', 'ebook', 'audiobook', 'digital'].includes(raw.format) ? raw.format : null,
     genres: Array.isArray(raw.genres)
       ? raw.genres.map(g => genreSet.get(String(g).toLowerCase())).filter(Boolean)
       : [],
@@ -219,6 +236,8 @@ function applyFilter(entries, filter) {
       if (filter.dateYearMin != null && y < filter.dateYearMin) return false
       if (filter.dateYearMax != null && y > filter.dateYearMax) return false
     }
+    if (filter.ownership && e.ownership !== filter.ownership) return false
+    if (filter.format && e.format !== filter.format) return false
     if (filter.genres.length) {
       const have = (e.genres || '').toLowerCase().split(',').map(t => t.trim())
       if (!filter.genres.every(g => have.includes(g.toLowerCase()))) return false
@@ -253,6 +272,8 @@ function describeFilter(filter, categories = []) {
   if (filter.dateYearMin != null) {
     push('dateYear', filter.dateYearMin === filter.dateYearMax ? `logged ${filter.dateYearMin}` : `logged ${filter.dateYearMin}–${filter.dateYearMax ?? '…'}`)
   }
+  if (filter.ownership) push('ownership', filter.ownership === 'owned' ? 'owned' : 'wishlist')
+  if (filter.format) push('format', { physical: 'physical', ebook: 'ebook', audiobook: 'audiobook', digital: 'digital' }[filter.format])
   for (const g of filter.genres) push(`genre:${g}`, `#${g}`)
   if (filter.text) push('text', `“${filter.text}”`)
   return chips
@@ -270,6 +291,8 @@ function removeFilterKey(filter, key) {
   else if (key === 'ratingMax') next.ratingMax = null
   else if (key === 'year')     { next.yearMin = null; next.yearMax = null }
   else if (key === 'dateYear') { next.dateYearMin = null; next.dateYearMax = null }
+  else if (key === 'ownership') next.ownership = null
+  else if (key === 'format')    next.format = null
   else if (key === 'text')      next.text = ''
   else if (key.startsWith('genre:')) {
     const g = key.slice(6).toLowerCase()

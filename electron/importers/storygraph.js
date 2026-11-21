@@ -57,7 +57,13 @@ function mapStoryGraph(csvText) {
 
     const authors = get('Authors', 'Author')
     const review  = get('Review')
-    const notes   = [authors && `By ${authors}`, review].filter(Boolean).join('\n\n')
+    const notes   = authors ? `By ${authors}` : ''
+    const fmt     = get('Format').toLowerCase()
+    const format  = /audio/.test(fmt) ? 'audiobook'
+      : /digital|ebook|kindle/.test(fmt) ? 'ebook'
+      : /paperback|hardcover|physical|print/.test(fmt) ? 'physical'
+      : undefined
+    const owned   = /^(yes|true|owned)$/i.test(get('Owned?', 'Owned'))
 
     const added = storygraphDate(get('Date Added'))
     const lastRead = storygraphDate(get('Last Date Read'))
@@ -71,6 +77,9 @@ function mapStoryGraph(csvText) {
       status,
       rating,
       notes,
+      review:     review || undefined,
+      format,
+      ownership:  owned ? 'owned' : undefined,
       genres:     get('Tags') || null,
       date_read:  status === 'completed' ? lastRead : null,
       created_at: added ? `${added} 00:00:00` : undefined,

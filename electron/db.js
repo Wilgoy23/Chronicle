@@ -36,6 +36,15 @@ function initDb(dbPath) {
   try { db.exec('ALTER TABLE entries ADD COLUMN genres TEXT') } catch {}
   // Release year — used by smarter duplicate detection so same-title remakes coexist
   try { db.exec('ALTER TABLE entries ADD COLUMN year INTEGER') } catch {}
+  // Your copy (9.1): format (physical / ebook / audiobook / digital), the
+  // platform a game is on, and whether you own it or only want it.
+  try { db.exec('ALTER TABLE entries ADD COLUMN format TEXT') } catch {}
+  try { db.exec('ALTER TABLE entries ADD COLUMN platform TEXT') } catch {}
+  try { db.exec('ALTER TABLE entries ADD COLUMN ownership TEXT') } catch {}
+  // Reviews (9.3): public-facing text kept apart from private notes, with a
+  // flag that hides it behind a spoiler warning.
+  try { db.exec('ALTER TABLE entries ADD COLUMN review TEXT') } catch {}
+  try { db.exec('ALTER TABLE entries ADD COLUMN review_spoilers INTEGER DEFAULT 0') } catch {}
 
   // Series table — standalone, first-class records
   db.exec(`
@@ -178,6 +187,7 @@ const ENTRY_SELECT = `
   SELECT e.id, e.category, e.title, e.status, e.rating, e.notes, e.cover_url,
          e.date_read, e.created_at, e.series_id, e.source, e.source_id,
          e.progress, e.progress_total, e.description, e.genres, e.year, s.name AS series,
+         e.format, e.platform, e.ownership, e.review, COALESCE(e.review_spoilers, 0) AS review_spoilers,
          (SELECT COUNT(*) FROM logs l WHERE l.entry_id = e.id) AS log_count,
          COALESCE((SELECT MAX(a.at) FROM activity a WHERE a.entry_id = e.id), e.created_at) AS last_activity
   FROM entries e
@@ -206,6 +216,38 @@ function normalizeGenres(genres) {
   return out.length ? out.join(', ') : null
 }
 
+const FORMATS   = ['physical', 'ebook', 'audiobook', 'digital']
+const OWNERSHIP = ['owned', 'wishlist']
+
+// An allowed value (case-insensitive) or null; anything unknown clears the field.
+function oneOf(value, allowed) {
+  if (value == null) return null
+  const v = String(value).trim().toLowerCase()
+  return allowed.includes(v) ? v : null
+}
+
+function textOrNull(value, max = 100) {
+  if (value == null) return null
+  const t = String(value).trim().slice(0, max)
+  return t || null
+}
+
+// The copy/review columns in their stored form. Undefined fields are left out,
+// so updateEntry can tell "not sent" apart from "cleared".
+function copyFields(src) {
+  const out = {}
+  if (src.format          !== undefined) out.format          = oneOf(src.format, FORMATS)
+  if (src.platform        !== undefined) out.platform        = textOrNull(src.platform)
+  if (src.ownership       !== undefined) out.ownership       = oneOf(src.ownership, OWNERSHIP)
+  if (src.review          !== undefined) out.review          = textOrNull(src.review, 20000)
+  if (src.review_spoilers !== undefined) out.review_spoilers = src.review_spoilers ? 1 : 0
+  return out
+}
+
+function splitTags(genres) {
+  return genres ? String(genres).split(',').map(t => t.trim()).filter(Boolean) : []
+}
+
 // Smarter duplicate detection (5.7). Tiered precedence, all category-scoped:
 //   1. exact external identity (source + source_id) — the strongest signal, so a
 //      remake with a *different* source_id is correctly treated as a new title;
@@ -229,16 +271,19 @@ function findDuplicate({ category, title, source, source_id, year }) {
   ).get(category, title) || null
 }
 
-function addEntry({ category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres, year, allowDuplicate }) {
+function addEntry(input) {
+  const { category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres, year, allowDuplicate } = input
   // allowDuplicate is the "Add anyway" escape hatch from the duplicate warning.
   if (!allowDuplicate) {
     const dup = findDuplicate({ category, title, source, source_id, year })
     if (dup) return { error: 'DUPLICATE', existing: dup }
   }
 
+  const copy = copyFields(input)
   const result = db.prepare(`
-    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres, year)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entries (category, title, status, rating, notes, cover_url, series_id, date_read, source, source_id, progress, progress_total, description, genres, year,
+                         format, platform, ownership, review, review_spoilers)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     category,
     title,
@@ -255,12 +300,18 @@ function addEntry({ category, title, status, rating, notes, cover_url, series_id
     description ?? null,
     normalizeGenres(genres),
     year != null && year !== '' ? Number(year) : null,
+    copy.format ?? null,
+    copy.platform ?? null,
+    copy.ownership ?? null,
+    copy.review ?? null,
+    copy.review_spoilers ?? 0,
   )
 
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid)
 }
 
-function updateEntry({ id, title, status, rating, notes, series_id, date_read, progress, progress_total, genres, year }) {
+function updateEntry(input) {
+  const { id, title, status, rating, notes, series_id, date_read, progress, progress_total, genres, year } = input
   // Preserve progress/genres/year when a caller omits them (e.g. drag-to-series only touches series_id).
   const cur = db.prepare('SELECT status, progress, progress_total, genres, year FROM entries WHERE id = ?').get(id) || {}
   const nextProgress = progress       === undefined ? (cur.progress ?? 0)          : (progress ?? 0)
@@ -275,6 +326,14 @@ function updateEntry({ id, title, status, rating, notes, series_id, date_read, p
   `).run(title, status, rating ?? null, notes ?? '', series_id ?? null, date_read ?? null,
          nextProgress, nextTotal, nextGenres, nextYear, id)
 
+  // Copy and review fields only change when the caller sends them.
+  const copy = copyFields(input)
+  const cols = Object.keys(copy)
+  if (cols.length) {
+    db.prepare(`UPDATE entries SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ?`)
+      .run(...cols.map(c => copy[c]), id)
+  }
+
   // Record dated activity when progress or status actually moved.
   const prevProgress = cur.progress ?? 0
   const statusChanged = cur.status != null && status != null && status !== cur.status
@@ -283,6 +342,65 @@ function updateEntry({ id, title, status, rating, notes, series_id, date_read, p
       .run(id, nextProgress, nextProgress - prevProgress, statusChanged ? status : null)
   }
   return db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(id)
+}
+
+const STATUSES = ['completed', 'in_progress', 'planned']
+
+// Bulk edit (9.2): apply one change to many entries in a single transaction.
+// Each field is optional; undefined leaves it alone, null clears it.
+//   status                       completed | in_progress | planned
+//   series_id                    a series in the entry's category, or null
+//   addTags / removeTags         tag names (case-insensitive on removal)
+//   ownership / format / platform  as in copyFields
+// A series from another category is skipped for that entry rather than
+// linking across categories. Returns the updated rows.
+function bulkUpdateEntries({ ids = [], status, series_id, addTags, removeTags, ownership, format, platform } = {}) {
+  const run = db.transaction(() => {
+    const getRow   = db.prepare('SELECT id, category, status, progress, genres FROM entries WHERE id = ?')
+    const series   = series_id != null ? db.prepare('SELECT id, category FROM series WHERE id = ?').get(series_id) : null
+    if (series_id != null && !series) return { error: 'SERIES_NOT_FOUND' }
+    const nextStatus = status !== undefined && STATUSES.includes(status) ? status : undefined
+    const copy = copyFields({ ownership, format, platform })
+    const add    = (addTags ?? []).map(t => String(t).trim()).filter(Boolean)
+    const remove = new Set((removeTags ?? []).map(t => String(t).trim().toLowerCase()).filter(Boolean))
+    const activity = db.prepare('INSERT INTO activity (entry_id, progress, delta, status) VALUES (?, ?, 0, ?)')
+
+    const updated = []
+    let skipped = 0
+    for (const id of ids) {
+      const row = getRow.get(id)
+      if (!row) { skipped++; continue }
+      const set = { ...copy }
+      if (nextStatus && nextStatus !== row.status) set.status = nextStatus
+      if (series_id === null) set.series_id = null
+      else if (series) {
+        if (series.category === row.category) set.series_id = series.id
+        else skipped++
+      }
+      if (add.length || remove.size) {
+        const tags = splitTags(row.genres).filter(t => !remove.has(t.toLowerCase()))
+        set.genres = normalizeGenres([...tags, ...add].join(','))
+      }
+      const cols = Object.keys(set)
+      if (cols.length) {
+        db.prepare(`UPDATE entries SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ?`)
+          .run(...cols.map(c => set[c]), id)
+      }
+      if (set.status) activity.run(id, row.progress ?? 0, set.status)
+      updated.push(id)
+    }
+    const get = db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`)
+    return { entries: updated.map(id => get.get(id)), skipped }
+  })
+  return run()
+}
+
+function deleteEntries(ids = []) {
+  const run = db.transaction(() => {
+    for (const id of ids) deleteEntry(id)
+    return { success: true, count: ids.length }
+  })
+  return run()
 }
 
 // Newest first. `at` is UTC ("YYYY-MM-DD HH:MM:SS"), as SQLite's datetime('now').
@@ -743,10 +861,12 @@ function importData(data, { mode = 'merge' } = {}) {
   const insertEntry  = db.prepare(`
     INSERT INTO entries
       (category, title, status, rating, notes, cover_url, series_id, date_read,
-       source, source_id, progress, progress_total, description, genres, year, created_at)
+       source, source_id, progress, progress_total, description, genres, year, created_at,
+       format, platform, ownership, review, review_spoilers)
     VALUES
       (@category, @title, @status, @rating, @notes, @cover_url, @series_id, @date_read,
-       @source, @source_id, @progress, @progress_total, @description, @genres, @year, @created_at)
+       @source, @source_id, @progress, @progress_total, @description, @genres, @year, @created_at,
+       @format, @platform, @ownership, @review, @review_spoilers)
   `)
   const insertLog = db.prepare(
     'INSERT INTO logs (entry_id, date, rating, notes) VALUES (?, ?, ?, ?)'
@@ -806,6 +926,8 @@ function importData(data, { mode = 'merge' } = {}) {
         genres:         normalizeGenres(e.genres),
         year:           e.year != null && e.year !== '' ? Number(e.year) : null,
         created_at:     e.created_at ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
+        format: null, platform: null, ownership: null, review: null, review_spoilers: 0,
+        ...copyFields(e),
       })
       if (e.id != null) {
         idMap.set(e.id, result.lastInsertRowid)
@@ -867,6 +989,7 @@ function importData(data, { mode = 'merge' } = {}) {
 module.exports = {
   initDb,
   getEntries, addEntry, findDuplicate, updateEntry, deleteEntry,
+  bulkUpdateEntries, deleteEntries, FORMATS, OWNERSHIP,
   getActivity, cacheGet, cacheSet,
   getLogs, getLogsByCategory, addLog, deleteLog,
   getSeries, addSeries, deleteSeries, renameSeries, findOrCreateSeries, addEntriesBatch,

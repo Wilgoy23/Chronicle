@@ -33,7 +33,7 @@ describe('toCsv', () => {
     const lines = toCsv(entries).split('\r\n')
     expect(lines).toHaveLength(2)
     expect(lines[0]).toBe(CSV_COLUMNS.join(','))
-    expect(lines[1]).toBe('1,book,Dune,Dune,completed,9,0,,2024-01-01,great,,,,,2024-01-01 10:00:00')
+    expect(lines[1]).toBe('1,book,Dune,Dune,completed,9,0,,2024-01-01,great,,,,,2024-01-01 10:00:00,,,,,,')
   })
 
   it('escapes a title containing a comma', () => {

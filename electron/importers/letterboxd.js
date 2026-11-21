@@ -12,6 +12,10 @@
 //   watched.csv   Date, Name, Year, Letterboxd URI → completed (Date is when it
 //                 was marked watched, not a viewing date, so it's not date_read).
 //   watchlist.csv Date, Name, Year, Letterboxd URI → planned.
+//   reviews.csv   Date, Name, Year, Letterboxd URI, Rating, Rewatch, Review,
+//                 Tags, Watched Date → the Review text lands on the film's entry
+//                 from the other files (by name + year), or a new completed one.
+//                 A film reviewed twice keeps its latest review.
 // Column reference is the documented export format, not yet verified against a
 // live download.
 const { parseCsv } = require('../csv')
@@ -22,10 +26,10 @@ function letterboxdDate(raw) {
   return t || null
 }
 
-// diary | ratings | watched | watchlist, from an exported file's name.
+// diary | ratings | watched | watchlist | reviews, from an exported file's name.
 function letterboxdKind(fileName = '') {
   const base = String(fileName).split(/[\\/]/).pop().toLowerCase()
-  for (const k of ['watchlist', 'ratings', 'watched', 'diary']) {
+  for (const k of ['watchlist', 'ratings', 'watched', 'reviews', 'diary']) {
     if (base.startsWith(k)) return k
   }
   return 'diary'
@@ -34,7 +38,7 @@ function letterboxdKind(fileName = '') {
 // Process order when several files are imported together: richest first, so
 // importData's title dedupe keeps the diary version of a film over its
 // ratings/watched duplicates.
-const KIND_ORDER = ['diary', 'ratings', 'watched', 'watchlist']
+const KIND_ORDER = ['diary', 'ratings', 'watched', 'watchlist', 'reviews']
 
 function stars(raw) {
   const s = parseFloat(raw)
@@ -132,11 +136,44 @@ function mapLetterboxdFiles(files) {
   const logs = []
   for (const f of ordered) {
     const rows = parseCsv(f.text)
+    if (f.kind === 'reviews') { attachReviews(rows, entries); continue }
     const part = f.kind === 'diary' ? mapDiary(rows, nextId) : mapSimple(rows, f.kind)
     entries.push(...part.entries)
     logs.push(...part.logs)
   }
   return { format: 'chronicle-export', version: 1, entries, series: [], logs }
+}
+
+// reviews.csv runs last (KIND_ORDER), so every other file's entries exist.
+function attachReviews(rows, entries) {
+  const key = (title, year) => `${String(title).trim().toLowerCase()}|${year ?? ''}`
+  const byKey = new Map()
+  for (const e of entries) if (!byKey.has(key(e.title, e.year))) byKey.set(key(e.title, e.year), e)
+  const dated = rows
+    .filter(r => (r['Name'] || '').trim() && (r['Review'] || '').trim())
+    .sort((a, b) => (letterboxdDate(a['Date']) ?? '').localeCompare(letterboxdDate(b['Date']) ?? ''))
+  for (const row of dated) {
+    const title = row['Name'].trim()
+    const year  = yearOf(row['Year'])
+    const review = row['Review'].trim()
+    const existing = byKey.get(key(title, year))
+    if (existing) { existing.review = review; continue }
+    const watched = letterboxdDate(row['Watched Date'])
+    const added   = letterboxdDate(row['Date'])
+    const entry = {
+      category:   'movie',
+      title,
+      status:     'completed',
+      rating:     stars(row['Rating']),
+      notes:      '',
+      review,
+      date_read:  watched,
+      created_at: added ? `${added} 00:00:00` : undefined,
+      year,
+    }
+    entries.push(entry)
+    byKey.set(key(title, year), entry)
+  }
 }
 
 module.exports = { mapLetterboxd, mapLetterboxdFiles, letterboxdDate, letterboxdKind }
